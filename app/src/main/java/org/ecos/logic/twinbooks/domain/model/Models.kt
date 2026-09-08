@@ -28,5 +28,6 @@ data class ReadingState(
     val leftBookUri: String? = null,
     val rightBookUri: String? = null,
     val isLoading: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val fontSize: Float = 12f
 )

@@ -7,17 +7,24 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -92,6 +99,7 @@ fun ReaderScreen(
                     BookPanel(
                         book = state.leftBook!!,
                         position = state.leftPosition,
+                        fontSize = state.fontSize,
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateLeftPosition(chapter, offset, paragraphText)
                         },
@@ -110,13 +118,55 @@ fun ReaderScreen(
                 }
             }
 
-            // Divider
-            Box(
+            // Divider with font size controls
+            Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(2.dp)
-                    .background(Color(0xFF333333))
-            )
+                    .width(44.dp)
+                    .background(Color(0xFF1A1A1A)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                if (state.leftBook != null || state.rightBook != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                            .clickable { viewModel.increaseFontSize() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Increase font size",
+                            tint = Color(0xFFB0B0B0),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "%.0f".format(state.fontSize),
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 10.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                            .clickable { viewModel.decreaseFontSize() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Remove,
+                            contentDescription = "Decrease font size",
+                            tint = Color(0xFFB0B0B0),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
 
             // Right panel
             Box(
@@ -129,6 +179,7 @@ fun ReaderScreen(
                     BookPanel(
                         book = state.rightBook!!,
                         position = state.rightPosition,
+                        fontSize = state.fontSize,
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateRightPosition(chapter, offset, paragraphText)
                         },

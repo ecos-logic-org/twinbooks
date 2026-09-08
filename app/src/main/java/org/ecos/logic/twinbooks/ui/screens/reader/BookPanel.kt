@@ -20,11 +20,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.NavigateBefore
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,12 +50,26 @@ private const val PARAGRAPH_TEXT_MAX_LENGTH = 100
 fun BookPanel(
     book: BookContent,
     position: ReadingPosition,
+    fontSize: Float = 12f,
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
     isLeft: Boolean
 ) {
     var showToc by remember { mutableStateOf(false) }
+    var currentSentenceIndex by remember { mutableStateOf(-1) }
+    var sentenceCount by remember { mutableStateOf(0) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
+
+    LaunchedEffect(position.paragraphText) {
+        currentSentenceIndex = -1
+        sentenceCount = 0
+    }
+
+    LaunchedEffect(sentenceCount) {
+        if (sentenceCount > 0 && currentSentenceIndex == -1) {
+            currentSentenceIndex = 0
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -70,6 +87,7 @@ fun BookPanel(
             if (currentChapter != null) {
                 ChapterWebView(
                     htmlContent = currentChapter.htmlContent,
+                    fontSize = fontSize.toInt(),
                     scrollOffset = position.scrollOffset,
                     restoreParagraphText = position.paragraphText,
                     onScrollChanged = { offset ->
@@ -77,7 +95,9 @@ fun BookPanel(
                     },
                     onParagraphHighlighted = { text ->
                         onPositionChanged(position.chapterIndex, position.scrollOffset, text)
-                    }
+                    },
+                    highlightSentenceIndex = currentSentenceIndex,
+                    onSentenceCountChanged = { count -> sentenceCount = count }
                 )
             }
         }
@@ -97,7 +117,18 @@ fun BookPanel(
             chapterIndex = position.chapterIndex,
             totalChapters = book.totalChapters,
             progressPercent = position.progressPercent,
-            onTocClick = { showToc = true }
+            onTocClick = { showToc = true },
+            isLeftBook = isLeft,
+            currentSentenceIndex = currentSentenceIndex,
+            sentenceCount = sentenceCount,
+            onPrevSentence = {
+                currentSentenceIndex = (currentSentenceIndex - 1).coerceAtLeast(0)
+            },
+            onNextSentence = {
+                currentSentenceIndex = (currentSentenceIndex + 1).coerceAtMost(
+                    (sentenceCount - 1).coerceAtLeast(0)
+                )
+            }
         )
     }
 
@@ -118,16 +149,23 @@ fun BookPanel(
 @Composable
 private fun ChapterWebView(
     htmlContent: String,
+    fontSize: Int = 12,
     scrollOffset: Int,
     restoreParagraphText: String,
     onScrollChanged: (Int) -> Unit,
-    onParagraphHighlighted: (String) -> Unit
+    onParagraphHighlighted: (String) -> Unit,
+    highlightSentenceIndex: Int = -1,
+    onSentenceCountChanged: (Int) -> Unit
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
     currentOnParagraphHighlighted.value = onParagraphHighlighted
     val currentOnScrollChanged = remember { mutableStateOf(onScrollChanged) }
     currentOnScrollChanged.value = onScrollChanged
+    val currentOnSentenceCountChanged = remember { mutableStateOf(onSentenceCountChanged) }
+    currentOnSentenceCountChanged.value = onSentenceCountChanged
+    var lastAppliedSentenceIndex by remember { mutableStateOf(-1) }
+    var lastAppliedFontSize by remember { mutableStateOf(fontSize) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -139,7 +177,7 @@ private fun ChapterWebView(
                     background-color: #000000 !important;
                     color: #FFFFFF !important;
                     font-family: serif;
-                    font-size: 12px;
+                    font-size: ${fontSize}px;
                     line-height: 1.2;
                     text-align: justify;
                     padding: 16px;
@@ -164,6 +202,12 @@ private fun ChapterWebView(
                     border-left: 3px solid #42A5F5 !important;
                     background-color: rgba(255, 255, 255, 0.12) !important;
                 }
+                .sentence-highlight {
+                    text-decoration: underline !important;
+                    background-color: rgba(66, 165, 245, 0.2) !important;
+                    border-radius: 2px;
+                    padding: 0 2px;
+                }
             </style>
         </head>
         <body>
@@ -182,6 +226,73 @@ private fun ChapterWebView(
                 return false;
             }
 
+            var currentHighlightSpan = null;
+
+            function clearSentenceHighlight() {
+                if (currentHighlightSpan) {
+                    var parent = currentHighlightSpan.parentNode;
+                    while (currentHighlightSpan.firstChild) {
+                        parent.insertBefore(currentHighlightSpan.firstChild, currentHighlightSpan);
+                    }
+                    parent.removeChild(currentHighlightSpan);
+                    parent.normalize();
+                    currentHighlightSpan = null;
+                }
+            }
+
+            function highlightSentence(index) {
+                clearSentenceHighlight();
+                var paragraph = document.querySelector('.reading-zone-highlight');
+                if (!paragraph) return -1;
+
+                var text = paragraph.textContent;
+                var sentences = text.match(/[^.]+\\. ?/g);
+                if (!sentences || sentences.length === 0) sentences = [text];
+
+                if (index < 0 || index >= sentences.length) return sentences.length;
+
+                var start = 0;
+                for (var i = 0; i < index; i++) start += sentences[i].length;
+                var end = start + sentences[index].length;
+
+                var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+                var charCount = 0, startNode = null, startOffset = 0;
+                var endNode = null, endOffset = 0;
+
+                while (walker.nextNode()) {
+                    var node = walker.currentNode;
+                    var len = node.textContent.length;
+                    if (!startNode && charCount + len > start) {
+                        startNode = node;
+                        startOffset = start - charCount;
+                    }
+                    if (charCount + len >= end) {
+                        endNode = node;
+                        endOffset = end - charCount;
+                        break;
+                    }
+                    charCount += len;
+                }
+
+                if (startNode && endNode) {
+                    var range = document.createRange();
+                    range.setStart(startNode, startOffset);
+                    range.setEnd(endNode, endOffset);
+                    var span = document.createElement('span');
+                    span.className = 'sentence-highlight';
+                    range.surroundContents(span);
+                    currentHighlightSpan = span;
+                }
+                return sentences.length;
+            }
+
+            function getSentenceCount() {
+                var paragraph = document.querySelector('.reading-zone-highlight');
+                if (!paragraph) return 0;
+                var sentences = paragraph.textContent.match(/[^.]+\\. ?/g);
+                return sentences ? sentences.length : 0;
+            }
+
             (function() {
                 var READING_ZONE_Y = $readingZoneY;
                 var highlighted = null;
@@ -192,6 +303,7 @@ private fun ChapterWebView(
                         highlighted.classList.remove('reading-zone-highlight');
                         highlighted = null;
                     }
+                    clearSentenceHighlight();
 
                     var elements = document.querySelectorAll('p');
                     if (elements.length === 0) return;
@@ -207,6 +319,10 @@ private fun ChapterWebView(
                         if (window.ParagraphBridge) {
                             var text = elements[i].textContent.trim().substring(0, 100);
                             window.ParagraphBridge.onParagraphFound(text);
+                            var allSentences = elements[i].textContent.match(/[^.]+\\. ?/g);
+                            window.ParagraphBridge.onSentenceCountFound(
+                                allSentences ? allSentences.length : 0
+                            );
                         }
                         break;
                     }
@@ -242,6 +358,11 @@ private fun ChapterWebView(
                 @JavascriptInterface
                 fun onParagraphFound(text: String) {
                     currentOnParagraphHighlighted.value(text)
+                }
+
+                @JavascriptInterface
+                fun onSentenceCountFound(count: Int) {
+                    currentOnSentenceCountChanged.value(count)
                 }
             }
             WebView(context).apply {
@@ -313,6 +434,24 @@ private fun ChapterWebView(
                     null
                 )
             }
+
+            if (highlightSentenceIndex != lastAppliedSentenceIndex) {
+                lastAppliedSentenceIndex = highlightSentenceIndex
+                if (highlightSentenceIndex >= 0) {
+                    webView.evaluateJavascript(
+                        "highlightSentence($highlightSentenceIndex)", null
+                    )
+                } else {
+                    webView.evaluateJavascript("clearSentenceHighlight()", null)
+                }
+            }
+
+            if (fontSize != lastAppliedFontSize) {
+                lastAppliedFontSize = fontSize
+                webView.evaluateJavascript(
+                    "document.body.style.fontSize = '${fontSize}px'", null
+                )
+            }
         }
     )
 }
@@ -338,7 +477,12 @@ private fun BottomInfoBar(
     chapterIndex: Int,
     totalChapters: Int,
     progressPercent: Float,
-    onTocClick: () -> Unit
+    onTocClick: () -> Unit,
+    isLeftBook: Boolean = false,
+    currentSentenceIndex: Int = -1,
+    sentenceCount: Int = 0,
+    onPrevSentence: () -> Unit = {},
+    onNextSentence: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -354,6 +498,23 @@ private fun BottomInfoBar(
             fontSize = 12.sp,
             modifier = Modifier.weight(1f)
         )
+
+        if (isLeftBook) {
+            IconButton(onClick = onPrevSentence) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
+                    contentDescription = "Previous sentence",
+                    tint = Color(0xFFB0B0B0)
+                )
+            }
+            IconButton(onClick = onNextSentence) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                    contentDescription = "Next sentence",
+                    tint = Color(0xFFB0B0B0)
+                )
+            }
+        }
 
         Text(
             text = String.format("%.0f%%", progressPercent),

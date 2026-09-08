@@ -153,6 +153,14 @@ class ReaderViewModel @Inject constructor(
         _state.update { it.copy(errorMessage = null) }
     }
 
+    fun increaseFontSize() {
+        _state.update { it.copy(fontSize = (it.fontSize + 1f).coerceAtMost(24f)) }
+    }
+
+    fun decreaseFontSize() {
+        _state.update { it.copy(fontSize = (it.fontSize - 1f).coerceAtLeast(6f)) }
+    }
+
     fun resetBooks() {
         _state.update {
             it.copy(
