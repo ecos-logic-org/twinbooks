@@ -153,6 +153,19 @@ class ReaderViewModel @Inject constructor(
         _state.update { it.copy(errorMessage = null) }
     }
 
+    fun resetBooks() {
+        _state.update {
+            it.copy(
+                leftBook = null,
+                rightBook = null,
+                leftBookUri = null,
+                rightBookUri = null,
+                leftPosition = ReadingPosition(),
+                rightPosition = ReadingPosition()
+            )
+        }
+    }
+
     private fun calculateProgress(chapterIndex: Int, scrollOffset: Int, book: BookContent): Float {
         if (book.totalChapters == 0) return 0f
         val chapterProgress = chapterIndex.toFloat() / book.totalChapters

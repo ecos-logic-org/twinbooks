@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -92,9 +96,6 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(true, chapter)
                         },
-                        onChangeBook = {
-                            leftBookLauncher.launch(arrayOf("application/epub+zip"))
-                        },
                         isLeft = true
                     )
                 } else {
@@ -132,9 +133,6 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(false, chapter)
                         },
-                        onChangeBook = {
-                            rightBookLauncher.launch(arrayOf("application/epub+zip"))
-                        },
                         isLeft = false
                     )
                 } else {
@@ -145,6 +143,22 @@ fun ReaderScreen(
                         }
                     )
                 }
+            }
+        }
+
+        // Reset both books button - top center
+        if (state.leftBook != null || state.rightBook != null) {
+            IconButton(
+                onClick = { viewModel.resetBooks() },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Change Books",
+                    tint = Color(0xFF666666)
+                )
             }
         }
 
