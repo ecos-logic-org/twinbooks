@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TwinBooks</string>
+    <string name="open_book">Open Book</string>
+    <string name="open_second_book">Open Second Book</string>
+    <string name="tap_to_open_book">Tap here to select a book</string>
+    <string name="no_book_loaded">No book loaded</string>
+    <string name="table_of_contents">Table of Contents</string>
+    <string name="page_format">%1$d / %2$d</string>
+    <string name="progress_format">%1$d%%</string>
+    <string name="chapter_format">Chapter %1$d of %2$d</string>
+    <string name="loading_book">Loading book…</string>
+    <string name="error_loading_book">Error loading book</string>
+    <string name="select_epub_file">Select EPUB file</string>
+    <string name="start_new_book">Start New Book</string>
+    <string name="left_panel_label">English</string>
+    <string name="right_panel_label">Spanish</string>
+</resources>
