@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -139,8 +138,9 @@ private fun ChapterWebView(
                     background-color: #000000 !important;
                     color: #FFFFFF !important;
                     font-family: serif;
-                    font-size: 18px;
-                    line-height: 1.8;
+                    font-size: 12px;
+                    line-height: 1.2;
+                    text-align: justify;
                     padding: 16px;
                     margin: 0;
                 }

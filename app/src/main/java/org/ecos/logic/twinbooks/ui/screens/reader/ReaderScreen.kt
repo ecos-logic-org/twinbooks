@@ -6,18 +6,20 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -146,18 +148,23 @@ fun ReaderScreen(
             }
         }
 
-        // Reset both books button - top center
+        // Reset both books button - bottom center
         if (state.leftBook != null || state.rightBook != null) {
-            IconButton(
-                onClick = { viewModel.resetBooks() },
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 8.dp)
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 40.dp)
+                    .size(40.dp)
+                    .background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                    .clickable { viewModel.resetBooks() },
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
                     contentDescription = "Change Books",
-                    tint = Color(0xFF666666)
+                    tint = Color(0xFFB0B0B0),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
