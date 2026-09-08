@@ -65,6 +65,7 @@ fun BookPanel(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .padding(vertical = 30.dp)
         ) {
             if (currentChapter != null) {
                 ChapterWebView(
