@@ -20,6 +20,26 @@ data class ReadingPosition(
     val paragraphText: String = ""
 )
 
+enum class TtsSpeed(val value: Float, val label: String) {
+    SPEED_0_25(0.25f, "0.25x"),
+    SPEED_0_5(0.5f, "0.5x"),
+    SPEED_1(1f, "1x"),
+    SPEED_1_25(1.25f, "1.25x"),
+    SPEED_1_5(1.5f, "1.5x")
+}
+
+enum class TtsPlayState { IDLE, PLAYING, PAUSED }
+
+data class TtsState(
+    val playState: TtsPlayState = TtsPlayState.IDLE,
+    val speed: TtsSpeed = TtsSpeed.SPEED_1,
+    val currentSentenceIndex: Int = 0,
+    val totalSentences: Int = 0,
+    val timerMinutes: Int = 0,
+    val timerRemainingSec: Int = 0,
+    val isTimerRunning: Boolean = false
+)
+
 data class ReadingState(
     val leftBook: BookContent? = null,
     val rightBook: BookContent? = null,
@@ -29,5 +49,6 @@ data class ReadingState(
     val rightBookUri: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val fontSize: Float = 12f
+    val fontSize: Float = 12f,
+    val ttsState: TtsState = TtsState()
 )

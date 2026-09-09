@@ -3,6 +3,7 @@ package org.ecos.logic.twinbooks.ui.screens.reader
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -37,21 +38,23 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import org.ecos.logic.twinbooks.domain.model.TtsPlayState
 import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
 
 @Composable
@@ -67,8 +70,56 @@ fun ReaderScreen(
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     val maxSentenceCount = maxOf(leftSentenceCount, rightSentenceCount)
 
+    var leftWebView by remember { mutableStateOf<WebView?>(null) }
+    var leftFullParagraphText by remember { mutableStateOf("") }
+    var ttsWaitingForParagraph by remember { mutableStateOf(false) }
+
     LaunchedEffect(state.leftPosition.paragraphText, state.rightPosition.paragraphText) {
         currentSentenceIndex = -1
+    }
+
+    // TTS: When ViewModel signals need for next paragraph, advance via JS
+    LaunchedEffect(state.ttsState.playState, state.ttsState.totalSentences) {
+        if (viewModel.needsNextParagraph() && !ttsWaitingForParagraph) {
+            ttsWaitingForParagraph = true
+            val webView = leftWebView ?: run {
+                ttsWaitingForParagraph = false
+                return@LaunchedEffect
+            }
+            webView.evaluateJavascript("window.ttsAdvanceParagraph()") { result ->
+                val advanced = result?.contains("true") == true
+                if (!advanced) {
+                    viewModel.stopTts()
+                    ttsWaitingForParagraph = false
+                }
+            }
+        }
+    }
+
+    // TTS: When paragraph text changes during TTS play, get sentences and start reading
+    LaunchedEffect(leftFullParagraphText, state.ttsState.playState) {
+        val tts = state.ttsState
+        if (tts.playState == TtsPlayState.PLAYING
+            && tts.totalSentences == 0
+            && leftFullParagraphText.isNotEmpty()
+            && ttsWaitingForParagraph
+        ) {
+            ttsWaitingForParagraph = false
+            val webView = leftWebView ?: return@LaunchedEffect
+            webView.evaluateJavascript("window.ttsGetCurrentSentences()") { result ->
+                val sentences = parseTtsSentencesJson(result)
+                if (sentences.isNotEmpty()) {
+                    viewModel.onTtsParagraphReady(sentences)
+                    webView.evaluateJavascript("window.ttsHighlightSentence(0)", null)
+                } else {
+                    viewModel.stopTts()
+                }
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { viewModel.stopTts() }
     }
 
     val leftBookLauncher = rememberLauncherForActivityResult(
@@ -141,7 +192,37 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(true, chapter)
                         },
-                        isLeft = true
+                        isLeft = true,
+                        onWebViewReady = { webView ->
+                            leftWebView = webView
+                        },
+                        onFullParagraphTextChanged = { text ->
+                            leftFullParagraphText = text
+                        },
+                        ttsState = state.ttsState,
+                        onTtsPlayPause = {
+                            val tts = state.ttsState
+                            when (tts.playState) {
+                                TtsPlayState.IDLE -> {
+                                    // Need to get sentences from current paragraph
+                                    val webView = leftWebView
+                                    if (webView != null) {
+                                        webView.evaluateJavascript("window.ttsGetCurrentSentences()") { result ->
+                                            val sentences = parseTtsSentencesJson(result)
+                                            if (sentences.isNotEmpty()) {
+                                                viewModel.startTts(sentences)
+                                                webView.evaluateJavascript("window.ttsHighlightSentence(0)", null)
+                                            }
+                                        }
+                                    }
+                                }
+                                TtsPlayState.PLAYING -> viewModel.pauseTts()
+                                TtsPlayState.PAUSED -> viewModel.resumeTts()
+                            }
+                        },
+                        onTtsStop = { viewModel.stopTts() },
+                        onTtsSpeedSelected = { speed -> viewModel.setTtsSpeed(speed) },
+                        onTtsTimerSelected = { minutes -> viewModel.setTtsTimer(minutes) }
                     )
                 } else {
                     EmptyBookPlaceholder(
@@ -270,6 +351,26 @@ fun ReaderScreen(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+    }
+}
+
+private fun parseTtsSentencesJson(json: String?): List<String> {
+    if (json == null || json == "null" || json == "[]") return emptyList()
+    val cleaned = json.trim().removeSurrounding("\"")
+    if (cleaned.isEmpty() || cleaned == "null") return emptyList()
+    return try {
+        val content = cleaned.removeSurrounding("[", "]")
+        if (content.isEmpty()) return emptyList()
+        content.split("\",\"")
+            .map {
+                it.removePrefix("\"")
+                    .removeSuffix("\"")
+                    .replace("\\\"", "\"")
+                    .trim()
+            }
+            .filter { it.isNotBlank() }
+    } catch (e: Exception) {
+        emptyList()
     }
 }
 

@@ -20,10 +20,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +45,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
+import org.ecos.logic.twinbooks.domain.model.TtsPlayState
+import org.ecos.logic.twinbooks.domain.model.TtsSpeed
+import org.ecos.logic.twinbooks.domain.model.TtsState
 
 internal const val READING_ZONE_Y_DP = 80f
 private const val PARAGRAPH_TEXT_MAX_LENGTH = 100
@@ -55,7 +64,14 @@ fun BookPanel(
     onNextSentence: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
-    isLeft: Boolean
+    isLeft: Boolean,
+    onWebViewReady: ((WebView) -> Unit)? = null,
+    onFullParagraphTextChanged: ((String) -> Unit)? = null,
+    ttsState: TtsState = TtsState(),
+    onTtsPlayPause: () -> Unit = {},
+    onTtsStop: () -> Unit = {},
+    onTtsSpeedSelected: (TtsSpeed) -> Unit = {},
+    onTtsTimerSelected: (Int) -> Unit = {}
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -85,7 +101,9 @@ fun BookPanel(
                         onPositionChanged(position.chapterIndex, position.scrollOffset, text)
                     },
                     highlightSentenceIndex = currentSentenceIndex,
-                    onSentenceCountChanged = onSentenceCountChanged
+                    onSentenceCountChanged = onSentenceCountChanged,
+                    onWebViewReady = onWebViewReady,
+                    onFullParagraphTextChanged = onFullParagraphTextChanged
                 )
             }
         }
@@ -108,7 +126,12 @@ fun BookPanel(
             onTocClick = { showToc = true },
             isLeftBook = isLeft,
             onPrevSentence = onPrevSentence,
-            onNextSentence = onNextSentence
+            onNextSentence = onNextSentence,
+            ttsState = ttsState,
+            onTtsPlayPause = onTtsPlayPause,
+            onTtsStop = onTtsStop,
+            onTtsSpeedSelected = onTtsSpeedSelected,
+            onTtsTimerSelected = onTtsTimerSelected
         )
     }
 
@@ -135,7 +158,9 @@ private fun ChapterWebView(
     onScrollChanged: (Int) -> Unit,
     onParagraphHighlighted: (String) -> Unit,
     highlightSentenceIndex: Int = -1,
-    onSentenceCountChanged: (Int) -> Unit
+    onSentenceCountChanged: (Int) -> Unit,
+    onWebViewReady: ((WebView) -> Unit)? = null,
+    onFullParagraphTextChanged: ((String) -> Unit)? = null
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -144,6 +169,10 @@ private fun ChapterWebView(
     currentOnScrollChanged.value = onScrollChanged
     val currentOnSentenceCountChanged = remember { mutableStateOf(onSentenceCountChanged) }
     currentOnSentenceCountChanged.value = onSentenceCountChanged
+    val currentOnFullParagraphTextChanged = remember { mutableStateOf(onFullParagraphTextChanged ?: {}) }
+    currentOnFullParagraphTextChanged.value = onFullParagraphTextChanged ?: {}
+    val currentOnWebViewReady = remember { mutableStateOf(onWebViewReady ?: {}) }
+    currentOnWebViewReady.value = onWebViewReady ?: {}
     var lastAppliedSentenceIndex by remember { mutableStateOf(-1) }
     var lastAppliedFontSize by remember { mutableStateOf(fontSize) }
 
@@ -317,6 +346,7 @@ private fun ChapterWebView(
                         if (window.ParagraphBridge) {
                             var text = highlighted.textContent.trim().substring(0, 100);
                             window.ParagraphBridge.onParagraphFound(text);
+                            window.ParagraphBridge.onFullParagraphText(highlighted.textContent.trim());
                             var allSentences = getSentences(highlighted.textContent);
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
@@ -344,6 +374,29 @@ private fun ChapterWebView(
                 setTimeout(highlightParagraph, 300);
                 setTimeout(highlightParagraph, 600);
                 setTimeout(highlightParagraph, 1200);
+
+                window.ttsHighlightSentence = function(idx) {
+                    return highlightSentence(idx);
+                };
+                window.ttsGetCurrentSentences = function() {
+                    var p = document.querySelector('.reading-zone-highlight');
+                    if (!p) return [];
+                    return getSentences(p.textContent);
+                };
+                window.ttsAdvanceParagraph = function() {
+                    var paragraphs = document.querySelectorAll('p');
+                    var currentIdx = -1;
+                    for (var i = 0; i < paragraphs.length; i++) {
+                        if (paragraphs[i] === highlighted) { currentIdx = i; break; }
+                    }
+                    var nextIdx = currentIdx + 1;
+                    if (nextIdx >= paragraphs.length) return false;
+                    paragraphs[nextIdx].click();
+                    return true;
+                };
+                window.ttsGetTotalParagraphs = function() {
+                    return document.querySelectorAll('p').length;
+                };
             })();
             </script>
         </body>
@@ -361,6 +414,11 @@ private fun ChapterWebView(
                 @JavascriptInterface
                 fun onSentenceCountFound(count: Int) {
                     currentOnSentenceCountChanged.value(count)
+                }
+
+                @JavascriptInterface
+                fun onFullParagraphText(text: String) {
+                    currentOnFullParagraphTextChanged.value(text)
                 }
             }
             WebView(context).apply {
@@ -385,6 +443,8 @@ private fun ChapterWebView(
         },
         modifier = Modifier.fillMaxSize(),
         update = { webView ->
+            currentOnWebViewReady.value(webView)
+
             if (webView.tag != htmlContent.hashCode()) {
                 webView.tag = htmlContent.hashCode()
                 webView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
@@ -483,8 +543,16 @@ private fun BottomInfoBar(
     onTocClick: () -> Unit,
     isLeftBook: Boolean = false,
     onPrevSentence: () -> Unit = {},
-    onNextSentence: () -> Unit = {}
+    onNextSentence: () -> Unit = {},
+    ttsState: TtsState = TtsState(),
+    onTtsPlayPause: () -> Unit = {},
+    onTtsStop: () -> Unit = {},
+    onTtsSpeedSelected: (TtsSpeed) -> Unit = {},
+    onTtsTimerSelected: (Int) -> Unit = {}
 ) {
+    var showSpeedMenu by remember { mutableStateOf(false) }
+    var showTimerMenu by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -513,6 +581,87 @@ private fun BottomInfoBar(
                     contentDescription = "Next sentence",
                     tint = Color(0xFFB0B0B0)
                 )
+            }
+
+            IconButton(onClick = onTtsPlayPause) {
+                Icon(
+                    imageVector = if (ttsState.playState == TtsPlayState.PLAYING)
+                        Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (ttsState.playState == TtsPlayState.PLAYING)
+                        "Pause TTS" else "Play TTS",
+                    tint = if (ttsState.playState == TtsPlayState.PLAYING)
+                        Color(0xFF42A5F5) else Color(0xFFB0B0B0)
+                )
+            }
+
+            if (ttsState.playState != TtsPlayState.IDLE) {
+                IconButton(onClick = onTtsStop) {
+                    Icon(
+                        imageVector = Icons.Default.Stop,
+                        contentDescription = "Stop TTS",
+                        tint = Color(0xFFB0B0B0)
+                    )
+                }
+            }
+
+            Box {
+                TextButton(onClick = { showSpeedMenu = true }) {
+                    Text(
+                        text = ttsState.speed.label,
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 11.sp
+                    )
+                }
+                DropdownMenu(
+                    expanded = showSpeedMenu,
+                    onDismissRequest = { showSpeedMenu = false }
+                ) {
+                    TtsSpeed.entries.forEach { speed ->
+                        DropdownMenuItem(
+                            text = { Text(speed.label) },
+                            onClick = {
+                                onTtsSpeedSelected(speed)
+                                showSpeedMenu = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Box {
+                val timerLabel = if (ttsState.timerMinutes > 0 && ttsState.isTimerRunning) {
+                    val min = ttsState.timerRemainingSec / 60
+                    val sec = ttsState.timerRemainingSec % 60
+                    "%d:%02d".format(min, sec)
+                } else if (ttsState.timerMinutes > 0) {
+                    "${ttsState.timerMinutes}m"
+                } else {
+                    "Timer"
+                }
+                TextButton(onClick = { showTimerMenu = true }) {
+                    Text(
+                        text = timerLabel,
+                        color = if (ttsState.isTimerRunning) Color(0xFF42A5F5) else Color(0xFFB0B0B0),
+                        fontSize = 11.sp
+                    )
+                }
+                DropdownMenu(
+                    expanded = showTimerMenu,
+                    onDismissRequest = { showTimerMenu = false }
+                ) {
+                    val options = listOf(0, 1, 2, 5, 10, 15, 30)
+                    options.forEach { minutes ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(if (minutes == 0) "Off" else "$minutes min")
+                            },
+                            onClick = {
+                                onTtsTimerSelected(minutes)
+                                showTimerMenu = false
+                            }
+                        )
+                    }
+                }
             }
         }
 
