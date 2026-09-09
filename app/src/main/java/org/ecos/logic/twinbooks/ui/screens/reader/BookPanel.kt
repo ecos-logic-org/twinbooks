@@ -293,32 +293,34 @@ private fun ChapterWebView(
                 var highlightTimer = null;
 
                 function highlightParagraph() {
-                    if (highlighted) {
-                        highlighted.classList.remove('reading-zone-highlight');
-                        highlighted = null;
-                    }
-                    clearSentenceHighlight();
-
                     var elements = document.querySelectorAll('p');
                     if (elements.length === 0) return;
 
+                    var newHighlighted = null;
                     for (var i = 0; i < elements.length; i++) {
                         var rect = elements[i].getBoundingClientRect();
                         if (rect.bottom < READING_ZONE_Y - 20) continue;
                         if (rect.top > window.innerHeight) break;
+                        newHighlighted = elements[i];
+                        break;
+                    }
 
-                        elements[i].classList.add('reading-zone-highlight');
-                        highlighted = elements[i];
+                    if (newHighlighted && newHighlighted !== highlighted) {
+                        if (highlighted) {
+                            highlighted.classList.remove('reading-zone-highlight');
+                        }
+                        clearSentenceHighlight();
+                        highlighted = newHighlighted;
+                        highlighted.classList.add('reading-zone-highlight');
 
                         if (window.ParagraphBridge) {
-                            var text = elements[i].textContent.trim().substring(0, 100);
+                            var text = highlighted.textContent.trim().substring(0, 100);
                             window.ParagraphBridge.onParagraphFound(text);
-                            var allSentences = getSentences(elements[i].textContent);
+                            var allSentences = getSentences(highlighted.textContent);
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
                             );
                         }
-                        break;
                     }
                 }
 

@@ -71,12 +71,6 @@ fun ReaderScreen(
         currentSentenceIndex = -1
     }
 
-    LaunchedEffect(maxSentenceCount) {
-        if (maxSentenceCount > 0 && currentSentenceIndex == -1) {
-            currentSentenceIndex = 0
-        }
-    }
-
     val leftBookLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -127,7 +121,12 @@ fun ReaderScreen(
                         position = state.leftPosition,
                         fontSize = state.fontSize,
                         currentSentenceIndex = currentSentenceIndex,
-                        onSentenceCountChanged = { count -> leftSentenceCount = count },
+                        onSentenceCountChanged = { count ->
+                            leftSentenceCount = count
+                            if (count > 0 && currentSentenceIndex == -1) {
+                                currentSentenceIndex = 0
+                            }
+                        },
                         onPrevSentence = {
                             currentSentenceIndex = (currentSentenceIndex - 1).coerceAtLeast(0)
                         },
@@ -233,7 +232,12 @@ fun ReaderScreen(
                         position = state.rightPosition,
                         fontSize = state.fontSize,
                         currentSentenceIndex = currentSentenceIndex,
-                        onSentenceCountChanged = { count -> rightSentenceCount = count },
+                        onSentenceCountChanged = { count ->
+                            rightSentenceCount = count
+                            if (count > 0 && currentSentenceIndex == -1) {
+                                currentSentenceIndex = 0
+                            }
+                        },
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateRightPosition(chapter, offset, paragraphText)
                         },
