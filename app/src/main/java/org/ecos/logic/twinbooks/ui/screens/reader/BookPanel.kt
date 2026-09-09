@@ -226,7 +226,7 @@ private fun ChapterWebView(
             }
 
             function getSentences(text) {
-                var raw = text.split(/([.])/);
+                var raw = text.split(/([.!?])/);
                 var sentences = [];
                 for (var i = 0; i < raw.length - 1; i += 2) {
                     sentences.push(raw[i] + raw[i + 1]);
@@ -275,6 +275,7 @@ private fun ChapterWebView(
                         var sel = window.getSelection();
                         sel.removeAllRanges();
                         sel.addRange(range);
+                        range.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     } catch(e) {}
                 }
                 return sentences.length;
@@ -436,8 +437,13 @@ private fun ChapterWebView(
                 lastAppliedSentenceIndex = highlightSentenceIndex
                 if (highlightSentenceIndex >= 0) {
                     webView.evaluateJavascript(
-                        "highlightSentence($highlightSentenceIndex)", null
-                    )
+                        "highlightSentence($highlightSentenceIndex)"
+                    ) { result ->
+                        val count = result?.replace("\"", "")?.toIntOrNull()
+                        if (count != null && count > 0) {
+                            currentOnSentenceCountChanged.value(count)
+                        }
+                    }
                 } else {
                     webView.evaluateJavascript("clearSentenceHighlight()", null)
                 }

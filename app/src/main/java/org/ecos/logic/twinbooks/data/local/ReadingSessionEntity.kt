@@ -18,5 +18,6 @@ data class ReadingSessionEntity(
     val rightProgressPercent: Float = 0f,
     val leftParagraphText: String = "",
     val rightParagraphText: String = "",
+    val fontSize: Float = 12f,
     val lastOpenedTimestamp: Long = System.currentTimeMillis()
 )

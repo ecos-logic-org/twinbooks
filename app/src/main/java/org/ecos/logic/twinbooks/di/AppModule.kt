@@ -25,7 +25,10 @@ object DatabaseModule {
             context,
             TwinBooksDatabase::class.java,
             "twinbooks_database"
-        ).addMigrations(TwinBooksDatabase.MIGRATION_1_2).build()
+        ).addMigrations(
+            TwinBooksDatabase.MIGRATION_1_2,
+            TwinBooksDatabase.MIGRATION_2_3
+        ).build()
     }
 
     @Provides

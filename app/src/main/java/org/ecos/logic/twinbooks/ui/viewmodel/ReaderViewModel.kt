@@ -155,10 +155,12 @@ class ReaderViewModel @Inject constructor(
 
     fun increaseFontSize() {
         _state.update { it.copy(fontSize = (it.fontSize + 1f).coerceAtMost(24f)) }
+        saveCurrentSession()
     }
 
     fun decreaseFontSize() {
         _state.update { it.copy(fontSize = (it.fontSize - 1f).coerceAtLeast(6f)) }
+        saveCurrentSession()
     }
 
     fun resetBooks() {
@@ -206,6 +208,7 @@ class ReaderViewModel @Inject constructor(
                         progressPercent = session.rightProgressPercent,
                         paragraphText = session.rightParagraphText
                     ),
+                    fontSize = session.fontSize,
                     isLoading = false
                 )
             }
@@ -230,7 +233,8 @@ class ReaderViewModel @Inject constructor(
                 leftProgressPercent = s.leftPosition.progressPercent,
                 rightProgressPercent = s.rightPosition.progressPercent,
                 leftParagraphText = s.leftPosition.paragraphText,
-                rightParagraphText = s.rightPosition.paragraphText
+                rightParagraphText = s.rightPosition.paragraphText,
+                fontSize = s.fontSize
             )
             bookRepository.saveSession(session)
         }

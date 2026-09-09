@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReadingSessionEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class TwinBooksDatabase : RoomDatabase() {
@@ -18,6 +18,12 @@ abstract class TwinBooksDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN leftParagraphText TEXT NOT NULL DEFAULT ''")
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN rightParagraphText TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reading_sessions ADD COLUMN fontSize REAL NOT NULL DEFAULT 12.0")
             }
         }
     }
