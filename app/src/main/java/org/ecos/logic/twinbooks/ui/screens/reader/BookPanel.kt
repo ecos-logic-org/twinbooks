@@ -226,7 +226,7 @@ private fun ChapterWebView(
             }
 
             function getSentences(text) {
-                var raw = text.split(/([.;])/);
+                var raw = text.split(/([.])/);
                 var sentences = [];
                 for (var i = 0; i < raw.length - 1; i += 2) {
                     sentences.push(raw[i] + raw[i + 1]);
@@ -320,6 +320,7 @@ private fun ChapterWebView(
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
                             );
+                            setTimeout(function() { highlightSentence(0); }, 50);
                         }
                     }
                 }
