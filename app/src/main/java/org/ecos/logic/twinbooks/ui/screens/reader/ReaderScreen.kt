@@ -13,13 +13,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -35,7 +40,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,6 +61,21 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+
+    var currentSentenceIndex by remember { mutableIntStateOf(-1) }
+    var leftSentenceCount by remember { mutableIntStateOf(0) }
+    var rightSentenceCount by remember { mutableIntStateOf(0) }
+    val maxSentenceCount = maxOf(leftSentenceCount, rightSentenceCount)
+
+    LaunchedEffect(state.leftPosition.paragraphText, state.rightPosition.paragraphText) {
+        currentSentenceIndex = -1
+    }
+
+    LaunchedEffect(maxSentenceCount) {
+        if (maxSentenceCount > 0 && currentSentenceIndex == -1) {
+            currentSentenceIndex = 0
+        }
+    }
 
     val leftBookLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -86,7 +108,11 @@ fun ReaderScreen(
             .background(Color.Black)
     ) {
         Row(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.displayCutout)
+                .statusBarsPadding()
+                .navigationBarsPadding()
         ) {
             // Left panel
             Box(
@@ -100,6 +126,16 @@ fun ReaderScreen(
                         book = state.leftBook!!,
                         position = state.leftPosition,
                         fontSize = state.fontSize,
+                        currentSentenceIndex = currentSentenceIndex,
+                        onSentenceCountChanged = { count -> leftSentenceCount = count },
+                        onPrevSentence = {
+                            currentSentenceIndex = (currentSentenceIndex - 1).coerceAtLeast(0)
+                        },
+                        onNextSentence = {
+                            currentSentenceIndex = (currentSentenceIndex + 1).coerceAtMost(
+                                (maxSentenceCount - 1).coerceAtLeast(0)
+                            )
+                        },
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateLeftPosition(chapter, offset, paragraphText)
                         },
@@ -118,7 +154,7 @@ fun ReaderScreen(
                 }
             }
 
-            // Divider with font size controls
+            // Divider with font size controls and reset button
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -128,6 +164,22 @@ fun ReaderScreen(
                 verticalArrangement = Arrangement.Center
             ) {
                 if (state.leftBook != null || state.rightBook != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                            .clickable { viewModel.resetBooks() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Change Books",
+                            tint = Color(0xFFB0B0B0),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     Box(
                         modifier = Modifier
                             .size(32.dp)
@@ -180,6 +232,8 @@ fun ReaderScreen(
                         book = state.rightBook!!,
                         position = state.rightPosition,
                         fontSize = state.fontSize,
+                        currentSentenceIndex = currentSentenceIndex,
+                        onSentenceCountChanged = { count -> rightSentenceCount = count },
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateRightPosition(chapter, offset, paragraphText)
                         },
@@ -196,27 +250,6 @@ fun ReaderScreen(
                         }
                     )
                 }
-            }
-        }
-
-        // Reset both books button - bottom center
-        if (state.leftBook != null || state.rightBook != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 40.dp)
-                    .size(40.dp)
-                    .background(Color(0xFF2A2A2A), RoundedCornerShape(8.dp))
-                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
-                    .clickable { viewModel.resetBooks() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Change Books",
-                    tint = Color(0xFFB0B0B0),
-                    modifier = Modifier.size(20.dp)
-                )
             }
         }
 

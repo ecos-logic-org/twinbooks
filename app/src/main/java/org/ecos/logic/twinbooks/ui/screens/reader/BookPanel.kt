@@ -15,9 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
@@ -51,31 +49,21 @@ fun BookPanel(
     book: BookContent,
     position: ReadingPosition,
     fontSize: Float = 12f,
+    currentSentenceIndex: Int = -1,
+    onSentenceCountChanged: (Int) -> Unit = {},
+    onPrevSentence: () -> Unit = {},
+    onNextSentence: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
     isLeft: Boolean
 ) {
     var showToc by remember { mutableStateOf(false) }
-    var currentSentenceIndex by remember { mutableStateOf(-1) }
-    var sentenceCount by remember { mutableStateOf(0) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
-
-    LaunchedEffect(position.paragraphText) {
-        currentSentenceIndex = -1
-        sentenceCount = 0
-    }
-
-    LaunchedEffect(sentenceCount) {
-        if (sentenceCount > 0 && currentSentenceIndex == -1) {
-            currentSentenceIndex = 0
-        }
-    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .statusBarsPadding()
     ) {
         // Book content
         Box(
@@ -97,7 +85,7 @@ fun BookPanel(
                         onPositionChanged(position.chapterIndex, position.scrollOffset, text)
                     },
                     highlightSentenceIndex = currentSentenceIndex,
-                    onSentenceCountChanged = { count -> sentenceCount = count }
+                    onSentenceCountChanged = onSentenceCountChanged
                 )
             }
         }
@@ -119,16 +107,8 @@ fun BookPanel(
             progressPercent = position.progressPercent,
             onTocClick = { showToc = true },
             isLeftBook = isLeft,
-            currentSentenceIndex = currentSentenceIndex,
-            sentenceCount = sentenceCount,
-            onPrevSentence = {
-                currentSentenceIndex = (currentSentenceIndex - 1).coerceAtLeast(0)
-            },
-            onNextSentence = {
-                currentSentenceIndex = (currentSentenceIndex + 1).coerceAtMost(
-                    (sentenceCount - 1).coerceAtLeast(0)
-                )
-            }
+            onPrevSentence = onPrevSentence,
+            onNextSentence = onNextSentence
         )
     }
 
@@ -208,6 +188,10 @@ private fun ChapterWebView(
                     border-radius: 2px;
                     padding: 0 2px;
                 }
+                ::selection {
+                    background-color: rgba(66, 165, 245, 0.4) !important;
+                    color: #FFFFFF !important;
+                }
             </style>
         </head>
         <body>
@@ -229,6 +213,7 @@ private fun ChapterWebView(
             var currentHighlightSpan = null;
 
             function clearSentenceHighlight() {
+                window.getSelection().removeAllRanges();
                 if (currentHighlightSpan) {
                     var parent = currentHighlightSpan.parentNode;
                     while (currentHighlightSpan.firstChild) {
@@ -240,14 +225,22 @@ private fun ChapterWebView(
                 }
             }
 
+            function getSentences(text) {
+                var raw = text.split(/([.;])/);
+                var sentences = [];
+                for (var i = 0; i < raw.length - 1; i += 2) {
+                    sentences.push(raw[i] + raw[i + 1]);
+                }
+                return sentences.length > 0 ? sentences : [text];
+            }
+
             function highlightSentence(index) {
                 clearSentenceHighlight();
                 var paragraph = document.querySelector('.reading-zone-highlight');
                 if (!paragraph) return -1;
 
                 var text = paragraph.textContent;
-                var sentences = text.match(/[^.]+\\. ?/g);
-                if (!sentences || sentences.length === 0) sentences = [text];
+                var sentences = getSentences(text);
 
                 if (index < 0 || index >= sentences.length) return sentences.length;
 
@@ -256,32 +249,33 @@ private fun ChapterWebView(
                 var end = start + sentences[index].length;
 
                 var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-                var charCount = 0, startNode = null, startOffset = 0;
-                var endNode = null, endOffset = 0;
+                var charCount = 0, startNode = null, startOffsetInNode = 0;
+                var endNode = null, endOffsetInNode = 0;
 
                 while (walker.nextNode()) {
                     var node = walker.currentNode;
                     var len = node.textContent.length;
                     if (!startNode && charCount + len > start) {
                         startNode = node;
-                        startOffset = start - charCount;
+                        startOffsetInNode = start - charCount;
                     }
                     if (charCount + len >= end) {
                         endNode = node;
-                        endOffset = end - charCount;
+                        endOffsetInNode = end - charCount;
                         break;
                     }
                     charCount += len;
                 }
 
                 if (startNode && endNode) {
-                    var range = document.createRange();
-                    range.setStart(startNode, startOffset);
-                    range.setEnd(endNode, endOffset);
-                    var span = document.createElement('span');
-                    span.className = 'sentence-highlight';
-                    range.surroundContents(span);
-                    currentHighlightSpan = span;
+                    try {
+                        var range = document.createRange();
+                        range.setStart(startNode, startOffsetInNode);
+                        range.setEnd(endNode, endOffsetInNode);
+                        var sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    } catch(e) {}
                 }
                 return sentences.length;
             }
@@ -289,8 +283,8 @@ private fun ChapterWebView(
             function getSentenceCount() {
                 var paragraph = document.querySelector('.reading-zone-highlight');
                 if (!paragraph) return 0;
-                var sentences = paragraph.textContent.match(/[^.]+\\. ?/g);
-                return sentences ? sentences.length : 0;
+                var sentences = getSentences(paragraph.textContent);
+                return sentences.length;
             }
 
             (function() {
@@ -319,9 +313,9 @@ private fun ChapterWebView(
                         if (window.ParagraphBridge) {
                             var text = elements[i].textContent.trim().substring(0, 100);
                             window.ParagraphBridge.onParagraphFound(text);
-                            var allSentences = elements[i].textContent.match(/[^.]+\\. ?/g);
+                            var allSentences = getSentences(elements[i].textContent);
                             window.ParagraphBridge.onSentenceCountFound(
-                                allSentences ? allSentences.length : 0
+                                allSentences.length
                             );
                         }
                         break;
@@ -479,8 +473,6 @@ private fun BottomInfoBar(
     progressPercent: Float,
     onTocClick: () -> Unit,
     isLeftBook: Boolean = false,
-    currentSentenceIndex: Int = -1,
-    sentenceCount: Int = 0,
     onPrevSentence: () -> Unit = {},
     onNextSentence: () -> Unit = {}
 ) {
@@ -488,7 +480,6 @@ private fun BottomInfoBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF1A1A1A))
-            .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
