@@ -171,41 +171,7 @@ class ReaderViewModel @Inject constructor(
                 leftBookUri = null,
                 rightBookUri = null,
                 leftPosition = ReadingPosition(),
-                rightPosition = ReadingPosition(),
-                syncActive = false,
-                syncLeftParagraphIndex = -1,
-                syncRightParagraphIndex = -1,
-                syncTotalLeftParagraphs = 0,
-                syncTotalRightParagraphs = 0
-            )
-        }
-    }
-
-    fun toggleSync() {
-        _state.update {
-            it.copy(
-                syncActive = !it.syncActive,
-                syncLeftParagraphIndex = -1,
-                syncRightParagraphIndex = -1,
-                syncTotalLeftParagraphs = 0,
-                syncTotalRightParagraphs = 0
-            )
-        }
-    }
-
-    fun activateSync(
-        leftParagraphIndex: Int,
-        leftTotalParagraphs: Int,
-        rightParagraphIndex: Int,
-        rightTotalParagraphs: Int
-    ) {
-        _state.update {
-            it.copy(
-                syncActive = true,
-                syncLeftParagraphIndex = leftParagraphIndex,
-                syncRightParagraphIndex = rightParagraphIndex,
-                syncTotalLeftParagraphs = leftTotalParagraphs,
-                syncTotalRightParagraphs = rightTotalParagraphs
+                rightPosition = ReadingPosition()
             )
         }
     }
