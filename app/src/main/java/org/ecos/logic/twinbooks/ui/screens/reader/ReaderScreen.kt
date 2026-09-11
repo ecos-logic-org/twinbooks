@@ -3,6 +3,7 @@ package org.ecos.logic.twinbooks.ui.screens.reader
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -41,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -65,6 +67,15 @@ fun ReaderScreen(
     var leftSentenceCount by remember { mutableIntStateOf(0) }
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     val maxSentenceCount = maxOf(leftSentenceCount, rightSentenceCount)
+
+    var leftParagraphIndex by remember { mutableIntStateOf(-1) }
+    var rightParagraphIndex by remember { mutableIntStateOf(-1) }
+    var leftTotalParagraphs by remember { mutableIntStateOf(0) }
+    var rightTotalParagraphs by remember { mutableIntStateOf(0) }
+    var syncWaitingForRight by remember { mutableStateOf(false) }
+    var syncTargetParagraphIndex by remember { mutableIntStateOf(-1) }
+    var leftDblClickParagraphIndex by remember { mutableIntStateOf(-1) }
+    val webViewRefs: MutableMap<Boolean, WebView> = remember { HashMap() }
 
     LaunchedEffect(state.leftPosition.paragraphText, state.rightPosition.paragraphText) {
         currentSentenceIndex = -1
@@ -93,6 +104,23 @@ fun ReaderScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    LaunchedEffect(state.syncActive, leftParagraphIndex) {
+        if (!state.syncActive || leftParagraphIndex < 0 || state.syncTotalLeftParagraphs <= 0) return@LaunchedEffect
+        val targetIndex = when {
+            state.syncTotalLeftParagraphs == state.syncTotalRightParagraphs -> leftParagraphIndex
+            state.syncTotalLeftParagraphs == 1 -> state.syncTotalRightParagraphs - 1
+            else -> ((leftParagraphIndex.toFloat() / (state.syncTotalLeftParagraphs - 1)) * (state.syncTotalRightParagraphs - 1)).toInt()
+        }.coerceIn(0, (state.syncTotalRightParagraphs - 1).coerceAtLeast(0))
+        syncTargetParagraphIndex = targetIndex
+    }
+
+    LaunchedEffect(syncTargetParagraphIndex) {
+        if (syncTargetParagraphIndex < 0 || !state.syncActive) return@LaunchedEffect
+        webViewRefs[false]?.evaluateJavascript(
+            "scrollToParagraphIndex($syncTargetParagraphIndex);", null
+        )
     }
 
     Box(
@@ -151,7 +179,22 @@ fun ReaderScreen(
                             viewModel.navigateToChapter(true, newChapter)
                             currentSentenceIndex = 0
                         },
-                        isLeft = true
+                        onParagraphDoubleClicked = { index, total ->
+                            leftDblClickParagraphIndex = index
+                            leftTotalParagraphs = total
+                            if (state.syncActive) {
+                                viewModel.toggleSync()
+                                syncWaitingForRight = true
+                            } else {
+                                syncWaitingForRight = true
+                            }
+                        },
+                        onParagraphIndexChanged = { index ->
+                            leftParagraphIndex = index
+                        },
+                        syncActive = state.syncActive,
+                        isLeft = true,
+                        onWebViewCreated = { webViewRefs[true] = it }
                     )
                 } else {
                     EmptyBookPlaceholder(
@@ -226,6 +269,40 @@ fun ReaderScreen(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                if (state.syncActive) Color(0xFF1B5E20) else Color(0xFF2A2A2A),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (state.syncActive) Color(0xFF4CAF50) else Color(0xFF555555),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable {
+                                if (state.syncActive) {
+                                    viewModel.toggleSync()
+                                } else if (syncWaitingForRight) {
+                                    syncWaitingForRight = false
+                                    viewModel.activateSync(
+                                        leftParagraphIndex = leftDblClickParagraphIndex,
+                                        leftTotalParagraphs = leftTotalParagraphs,
+                                        rightParagraphIndex = rightParagraphIndex,
+                                        rightTotalParagraphs = rightTotalParagraphs
+                                    )
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⇔",
+                            color = if (state.syncActive) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
+                            fontSize = 16.sp
+                        )
+                    }
                 }
             }
 
@@ -265,7 +342,25 @@ fun ReaderScreen(
                             viewModel.navigateToChapter(false, newChapter)
                             currentSentenceIndex = 0
                         },
-                        isLeft = false
+                        onParagraphDoubleClicked = { index, total ->
+                            rightParagraphIndex = index
+                            rightTotalParagraphs = total
+                            if (syncWaitingForRight) {
+                                syncWaitingForRight = false
+                                viewModel.activateSync(
+                                    leftParagraphIndex = leftDblClickParagraphIndex,
+                                    leftTotalParagraphs = leftTotalParagraphs,
+                                    rightParagraphIndex = index,
+                                    rightTotalParagraphs = total
+                                )
+                            }
+                        },
+                        onParagraphIndexChanged = { index ->
+                            rightParagraphIndex = index
+                        },
+                        syncActive = state.syncActive,
+                        isLeft = false,
+                        onWebViewCreated = { webViewRefs[false] = it }
                     )
                 } else {
                     EmptyBookPlaceholder(
