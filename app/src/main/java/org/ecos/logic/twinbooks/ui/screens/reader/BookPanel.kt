@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -50,6 +51,8 @@ fun BookPanel(
     onNextSentence: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
+    onPrevChapter: () -> Unit = {},
+    onNextChapter: () -> Unit = {},
     isLeft: Boolean
 ) {
     var showToc by remember { mutableStateOf(false) }
@@ -103,7 +106,9 @@ fun BookPanel(
             onTocClick = { showToc = true },
             isLeftBook = isLeft,
             onPrevSentence = onPrevSentence,
-            onNextSentence = onNextSentence
+            onNextSentence = onNextSentence,
+            onPrevChapter = onPrevChapter,
+            onNextChapter = onNextChapter
         )
     }
 
@@ -522,7 +527,9 @@ private fun BottomInfoBar(
     onTocClick: () -> Unit,
     isLeftBook: Boolean = false,
     onPrevSentence: () -> Unit = {},
-    onNextSentence: () -> Unit = {}
+    onNextSentence: () -> Unit = {},
+    onPrevChapter: () -> Unit = {},
+    onNextChapter: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -538,21 +545,19 @@ private fun BottomInfoBar(
             modifier = Modifier.weight(1f)
         )
 
-        if (isLeftBook) {
-            IconButton(onClick = onPrevSentence) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
-                    contentDescription = "Previous sentence",
-                    tint = Color(0xFFB0B0B0)
-                )
-            }
-            IconButton(onClick = onNextSentence) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                    contentDescription = "Next sentence",
-                    tint = Color(0xFFB0B0B0)
-                )
-            }
+        IconButton(onClick = onPrevSentence) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
+                contentDescription = "Previous sentence",
+                tint = Color(0xFFB0B0B0)
+            )
+        }
+        IconButton(onClick = onNextSentence) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                contentDescription = "Next sentence",
+                tint = Color(0xFFB0B0B0)
+            )
         }
 
         Text(
@@ -560,8 +565,29 @@ private fun BottomInfoBar(
             color = Color(0xFFB0B0B0),
             fontSize = 12.sp,
             modifier = Modifier.weight(1f),
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            textAlign = TextAlign.Center
         )
+
+        IconButton(
+            onClick = onPrevChapter,
+            enabled = chapterIndex > 0
+        ) {
+            Text(
+                text = "|<",
+                color = if (chapterIndex > 0) Color(0xFFB0B0B0) else Color(0xFF555555),
+                fontSize = 14.sp
+            )
+        }
+        IconButton(
+            onClick = onNextChapter,
+            enabled = chapterIndex < totalChapters - 1
+        ) {
+            Text(
+                text = ">|",
+                color = if (chapterIndex < totalChapters - 1) Color(0xFFB0B0B0) else Color(0xFF555555),
+                fontSize = 14.sp
+            )
+        }
 
         IconButton(onClick = onTocClick) {
             Icon(

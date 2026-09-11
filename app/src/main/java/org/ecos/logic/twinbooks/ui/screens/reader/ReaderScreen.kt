@@ -140,6 +140,17 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(true, chapter)
                         },
+                        onPrevChapter = {
+                            val newChapter = (state.leftPosition.chapterIndex - 1).coerceAtLeast(0)
+                            viewModel.navigateToChapter(true, newChapter)
+                            currentSentenceIndex = 0
+                        },
+                        onNextChapter = {
+                            val newChapter = (state.leftPosition.chapterIndex + 1)
+                                .coerceAtMost((state.leftBook?.totalChapters ?: 1) - 1)
+                            viewModel.navigateToChapter(true, newChapter)
+                            currentSentenceIndex = 0
+                        },
                         isLeft = true
                     )
                 } else {
@@ -242,6 +253,17 @@ fun ReaderScreen(
                         },
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(false, chapter)
+                        },
+                        onPrevChapter = {
+                            val newChapter = (state.rightPosition.chapterIndex - 1).coerceAtLeast(0)
+                            viewModel.navigateToChapter(false, newChapter)
+                            currentSentenceIndex = 0
+                        },
+                        onNextChapter = {
+                            val newChapter = (state.rightPosition.chapterIndex + 1)
+                                .coerceAtMost((state.rightBook?.totalChapters ?: 1) - 1)
+                            viewModel.navigateToChapter(false, newChapter)
+                            currentSentenceIndex = 0
                         },
                         isLeft = false
                     )
