@@ -1,0 +1,14 @@
+TwinBooks is a dual-pane EPUB reader designed for language learners. Open the same book in two different languages and read them side by side on your Android tablet.
+
+Features:
+
+- Split-screen view with left and right book panels
+- Paragraph synchronization between books
+- Sentence-level navigation and highlighting
+- Dark theme for comfortable reading
+- Table of contents navigation
+- Font size adjustment
+- Reading position persistence - resume exactly where you left off
+- Landscape-optimized for tablets
+
+Perfect for bilingual reading, parallel texts, and language immersion. Open an English book on the left and your native language on the right to learn vocabulary and grammar in context.

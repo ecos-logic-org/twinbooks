@@ -21,5 +21,7 @@ data class ReadingSession(
     val rightProgressPercent: Float = 0f,
     val leftParagraphText: String = "",
     val rightParagraphText: String = "",
-    val fontSize: Float = 12f
+    val fontSize: Float = 12f,
+    val isSynchronized: Boolean = false,
+    val syncOffset: Int = 0
 )

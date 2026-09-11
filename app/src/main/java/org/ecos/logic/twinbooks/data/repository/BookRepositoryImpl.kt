@@ -52,7 +52,9 @@ class BookRepositoryImpl @Inject constructor(
         rightProgressPercent = rightProgressPercent,
         leftParagraphText = leftParagraphText,
         rightParagraphText = rightParagraphText,
-        fontSize = fontSize
+        fontSize = fontSize,
+        isSynchronized = isSynchronized,
+        syncOffset = syncOffset
     )
 
     private fun ReadingSession.toEntity() = ReadingSessionEntity(
@@ -69,6 +71,8 @@ class BookRepositoryImpl @Inject constructor(
         rightProgressPercent = rightProgressPercent,
         leftParagraphText = leftParagraphText,
         rightParagraphText = rightParagraphText,
-        fontSize = fontSize
+        fontSize = fontSize,
+        isSynchronized = isSynchronized,
+        syncOffset = syncOffset
     )
 }

@@ -29,5 +29,9 @@ data class ReadingState(
     val rightBookUri: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val fontSize: Float = 12f
+    val fontSize: Float = 12f,
+    val isSynchronized: Boolean = false,
+    val syncOffset: Int = 0,
+    val leftParagraphIndex: Int = -1,
+    val rightParagraphIndex: Int = -1
 )

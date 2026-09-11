@@ -19,5 +19,7 @@ data class ReadingSessionEntity(
     val leftParagraphText: String = "",
     val rightParagraphText: String = "",
     val fontSize: Float = 12f,
+    val isSynchronized: Boolean = false,
+    val syncOffset: Int = 0,
     val lastOpenedTimestamp: Long = System.currentTimeMillis()
 )

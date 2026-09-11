@@ -171,9 +171,57 @@ class ReaderViewModel @Inject constructor(
                 leftBookUri = null,
                 rightBookUri = null,
                 leftPosition = ReadingPosition(),
-                rightPosition = ReadingPosition()
+                rightPosition = ReadingPosition(),
+                isSynchronized = false,
+                syncOffset = 0,
+                leftParagraphIndex = -1,
+                rightParagraphIndex = -1
             )
         }
+    }
+
+    fun onLeftParagraphDoubleClicked(paragraphIndex: Int) {
+        _state.update { it.copy(leftParagraphIndex = paragraphIndex) }
+    }
+
+    fun onRightParagraphDoubleClicked(paragraphIndex: Int) {
+        val leftIndex = _state.value.leftParagraphIndex
+        if (leftIndex >= 0) {
+            val offset = paragraphIndex - leftIndex
+            _state.update {
+                it.copy(
+                    isSynchronized = true,
+                    syncOffset = offset,
+                    rightParagraphIndex = paragraphIndex
+                )
+            }
+            saveCurrentSession()
+        }
+    }
+
+    fun toggleSync() {
+        _state.update {
+            it.copy(isSynchronized = !it.isSynchronized)
+        }
+        saveCurrentSession()
+    }
+
+    fun updateLeftParagraphIndex(index: Int) {
+        _state.update { it.copy(leftParagraphIndex = index) }
+    }
+
+    fun updateRightParagraphIndex(index: Int) {
+        val currentState = _state.value
+        if (currentState.isSynchronized) {
+            val leftIndex = currentState.leftParagraphIndex
+            if (leftIndex >= 0) {
+                val newOffset = index - leftIndex
+                _state.update { it.copy(rightParagraphIndex = index, syncOffset = newOffset) }
+                saveCurrentSession()
+                return
+            }
+        }
+        _state.update { it.copy(rightParagraphIndex = index) }
     }
 
     // --- Persistence Methods ---
@@ -211,6 +259,8 @@ class ReaderViewModel @Inject constructor(
                         paragraphText = session.rightParagraphText
                     ),
                     fontSize = session.fontSize,
+                    isSynchronized = session.isSynchronized,
+                    syncOffset = session.syncOffset,
                     isLoading = false
                 )
             }
@@ -236,7 +286,9 @@ class ReaderViewModel @Inject constructor(
                 rightProgressPercent = s.rightPosition.progressPercent,
                 leftParagraphText = s.leftPosition.paragraphText,
                 rightParagraphText = s.rightPosition.paragraphText,
-                fontSize = s.fontSize
+                fontSize = s.fontSize,
+                isSynchronized = s.isSynchronized,
+                syncOffset = s.syncOffset
             )
             bookRepository.saveSession(session)
         }

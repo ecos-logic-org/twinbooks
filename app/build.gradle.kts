@@ -54,6 +54,11 @@ android {
             excludes += "/META-INF/NOTICE.txt"
         }
     }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 dependencies {

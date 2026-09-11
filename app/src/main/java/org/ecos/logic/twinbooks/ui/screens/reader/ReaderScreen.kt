@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -66,11 +68,18 @@ fun ReaderScreen(
     var leftSentenceCount by remember { mutableIntStateOf(0) }
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     var rightOffset by remember { mutableIntStateOf(0) }
+    var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
         leftSentenceIndex = -1
         rightSentenceIndex = -1
         rightOffset = 0
+    }
+
+    LaunchedEffect(scrollToRightIndex) {
+        if (scrollToRightIndex != null) {
+            scrollToRightIndex = null
+        }
     }
 
     val leftBookLauncher = rememberLauncherForActivityResult(
@@ -159,7 +168,17 @@ fun ReaderScreen(
                             viewModel.navigateToChapter(true, newChapter)
                             leftSentenceIndex = 0
                         },
-                        isLeft = true
+                        isLeft = true,
+                        isSynchronized = state.isSynchronized,
+                        onParagraphDoubleClicked = { index ->
+                            viewModel.onLeftParagraphDoubleClicked(index)
+                        },
+                        onParagraphIndexChanged = { index ->
+                            viewModel.updateLeftParagraphIndex(index)
+                            if (state.isSynchronized && index >= 0) {
+                                scrollToRightIndex = index + state.syncOffset
+                            }
+                        }
                     )
                 } else {
                     EmptyBookPlaceholder(
@@ -193,6 +212,25 @@ fun ReaderScreen(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Change Books",
                             tint = Color(0xFFB0B0B0),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                if (state.isSynchronized) Color(0xFF2E7D32) else Color(0xFF2A2A2A),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                            .clickable { viewModel.toggleSync() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Link,
+                            contentDescription = "Toggle synchronization",
+                            tint = if (state.isSynchronized) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -281,7 +319,15 @@ fun ReaderScreen(
                             viewModel.navigateToChapter(false, newChapter)
                             rightSentenceIndex = 0
                         },
-                        isLeft = false
+                        isLeft = false,
+                        isSynchronized = state.isSynchronized,
+                        onParagraphDoubleClicked = { index ->
+                            viewModel.onRightParagraphDoubleClicked(index)
+                        },
+                        onParagraphIndexChanged = { index ->
+                            viewModel.updateRightParagraphIndex(index)
+                        },
+                        scrollToParagraphIndex = scrollToRightIndex
                     )
                 } else {
                     EmptyBookPlaceholder(

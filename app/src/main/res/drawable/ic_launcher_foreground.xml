@@ -4,10 +4,37 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,30 L50,30 L50,78 L30,78 Z"/>
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M58,30 L78,30 L78,78 L58,78 Z"/>
+  <group android:scaleX="0.71"
+      android:scaleY="0.71"
+      android:translateX="15.66"
+      android:translateY="15.66">
+
+      <!-- Left Page -->
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M24,32c0,-2.2 1.8,-4 4,-4h24v52h-24c-2.2,0 -4,-1.8 -4,-4z" />
+
+      <!-- Right Page -->
+      <path
+          android:fillColor="#FFFFFF"
+          android:pathData="M56,28h24c2.2,0 4,1.8 4,4v44c0,2.2 -1.8,4 -4,4h-24z" />
+
+      <!-- Spine / Middle Fold -->
+      <path
+          android:fillColor="#000000"
+          android:fillAlpha="0.05"
+          android:pathData="M52,28h4v52h-4z" />
+
+      <!-- Clean Minimalist Lines -->
+      <!-- Left Page (Blue Accent) -->
+      <path
+          android:fillColor="#2962FF"
+          android:pathData="M30,40h14v2h-14z M30,48h10v2h-10z M30,56h14v2h-14z M30,64h8v2h-8z" />
+
+      <!-- Right Page (Green Accent) -->
+      <path
+          android:fillColor="#00C853"
+          android:pathData="M64,40h14v2h-14z M64,48h10v2h-10z M64,56h14v2h-14z M64,64h8v2h-8z" />
+
+  </group>
 </vector>

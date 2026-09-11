@@ -1,0 +1,7 @@
+- Initial release
+- Split-screen EPUB reader
+- Paragraph synchronization
+- Sentence navigation
+- Dark theme
+- Font size control
+- Reading position persistence

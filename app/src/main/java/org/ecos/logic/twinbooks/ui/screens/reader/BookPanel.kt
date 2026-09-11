@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -53,7 +54,11 @@ fun BookPanel(
     onChapterSelected: (Int) -> Unit,
     onPrevChapter: () -> Unit = {},
     onNextChapter: () -> Unit = {},
-    isLeft: Boolean
+    isLeft: Boolean,
+    isSynchronized: Boolean = false,
+    onParagraphDoubleClicked: (Int) -> Unit = {},
+    onParagraphIndexChanged: (Int) -> Unit = {},
+    scrollToParagraphIndex: Int? = null
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -79,11 +84,15 @@ fun BookPanel(
                     onScrollChanged = { offset ->
                         onPositionChanged(position.chapterIndex, offset, position.paragraphText)
                     },
-                    onParagraphHighlighted = { text ->
+                    onParagraphHighlighted = { text, index ->
                         onPositionChanged(position.chapterIndex, position.scrollOffset, text)
+                        onParagraphIndexChanged(index)
                     },
                     highlightSentenceIndex = currentSentenceIndex,
-                    onSentenceCountChanged = onSentenceCountChanged
+                    onSentenceCountChanged = onSentenceCountChanged,
+                    isSynchronized = isSynchronized,
+                    onParagraphDoubleClicked = onParagraphDoubleClicked,
+                    scrollToParagraphIndex = scrollToParagraphIndex
                 )
             }
         }
@@ -133,9 +142,12 @@ private fun ChapterWebView(
     scrollOffset: Int,
     restoreParagraphText: String,
     onScrollChanged: (Int) -> Unit,
-    onParagraphHighlighted: (String) -> Unit,
+    onParagraphHighlighted: (String, Int) -> Unit,
     highlightSentenceIndex: Int = -1,
-    onSentenceCountChanged: (Int) -> Unit
+    onSentenceCountChanged: (Int) -> Unit,
+    isSynchronized: Boolean = false,
+    onParagraphDoubleClicked: (Int) -> Unit = {},
+    scrollToParagraphIndex: Int? = null
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -144,8 +156,12 @@ private fun ChapterWebView(
     currentOnScrollChanged.value = onScrollChanged
     val currentOnSentenceCountChanged = remember { mutableStateOf(onSentenceCountChanged) }
     currentOnSentenceCountChanged.value = onSentenceCountChanged
-    var lastAppliedSentenceIndex by remember { mutableStateOf(-1) }
+    val currentOnParagraphDoubleClicked = remember { mutableStateOf(onParagraphDoubleClicked) }
+    currentOnParagraphDoubleClicked.value = onParagraphDoubleClicked
+    var lastAppliedSentenceIndex by remember { mutableIntStateOf(-1) }
     var lastAppliedFontSize by remember { mutableStateOf(fontSize) }
+    var lastAppliedScrollToIndex by remember { mutableStateOf<Int?>(null) }
+    var lastAppliedSyncedState by remember { mutableStateOf(isSynchronized) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -198,6 +214,10 @@ private fun ChapterWebView(
                     border-left: 3px solid #42A5F5 !important;
                     background-color: rgba(255, 255, 255, 0.12) !important;
                 }
+                .reading-zone-highlight-synced {
+                    border-left: 3px solid #4CAF50 !important;
+                    background-color: rgba(255, 255, 255, 0.12) !important;
+                }
                 .sentence-highlight {
                     text-decoration: underline !important;
                     background-color: rgba(66, 165, 245, 0.2) !important;
@@ -225,6 +245,31 @@ private fun ChapterWebView(
                     }
                 }
                 return false;
+            }
+
+            function getParagraphIndex() {
+                var elements = document.querySelectorAll('p');
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph) return -1;
+                for (var i = 0; i < elements.length; i++) {
+                    if (elements[i] === paragraph) return i;
+                }
+                return -1;
+            }
+
+            function scrollToParagraphByIndex(index) {
+                var elements = document.querySelectorAll('p');
+                if (index < 0 || index >= elements.length) return false;
+                elements[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return true;
+            }
+
+            function setHighlightSynced(synced) {
+                var el = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (el) {
+                    el.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                    el.classList.add(synced ? 'reading-zone-highlight-synced' : 'reading-zone-highlight');
+                }
             }
 
             var currentHighlightSpan = null;
@@ -267,7 +312,7 @@ private fun ChapterWebView(
 
             function highlightSentence(index) {
                 clearSentenceHighlight();
-                var paragraph = document.querySelector('.reading-zone-highlight');
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
                 if (!paragraph) return -1;
 
                 var text = paragraph.textContent;
@@ -313,7 +358,7 @@ private fun ChapterWebView(
             }
 
             function getSentenceCount() {
-                var paragraph = document.querySelector('.reading-zone-highlight');
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
                 if (!paragraph) return 0;
                 var sentences = getSentences(paragraph.textContent);
                 return sentences.length;
@@ -352,7 +397,7 @@ private fun ChapterWebView(
 
                     if (newHighlighted && newHighlighted !== highlighted) {
                         if (highlighted) {
-                            highlighted.classList.remove('reading-zone-highlight');
+                            highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
                         }
                         clearSentenceHighlight();
                         highlighted = newHighlighted;
@@ -360,7 +405,8 @@ private fun ChapterWebView(
 
                         if (window.ParagraphBridge) {
                             var text = highlighted.textContent.trim().substring(0, 100);
-                            window.ParagraphBridge.onParagraphFound(text);
+                            var index = getParagraphIndex();
+                            window.ParagraphBridge.onParagraphFound(text, index);
                             var allSentences = getSentences(highlighted.textContent);
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
@@ -382,7 +428,7 @@ private fun ChapterWebView(
                         var clickedElement = this;
 
                         if (highlighted) {
-                            highlighted.classList.remove('reading-zone-highlight');
+                            highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
                         }
                         clearSentenceHighlight();
                         highlighted = clickedElement;
@@ -390,13 +436,23 @@ private fun ChapterWebView(
 
                         if (window.ParagraphBridge) {
                             var text = clickedElement.textContent.trim().substring(0, 100);
-                            window.ParagraphBridge.onParagraphFound(text);
+                            var index = getParagraphIndex();
+                            window.ParagraphBridge.onParagraphFound(text, index);
                             var allSentences = getSentences(clickedElement.textContent);
                             window.ParagraphBridge.onSentenceCountFound(allSentences.length);
                             setTimeout(function() { highlightSentence(0); }, 50);
                         }
 
                         clickedElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    });
+
+                    paragraphs[i].addEventListener('dblclick', function(e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (window.ParagraphBridge) {
+                            var index = getParagraphIndex();
+                            window.ParagraphBridge.onParagraphDoubleClicked(index);
+                        }
                     });
                 }
 
@@ -414,13 +470,18 @@ private fun ChapterWebView(
         factory = { context ->
             val jsInterface = object : Any() {
                 @JavascriptInterface
-                fun onParagraphFound(text: String) {
-                    currentOnParagraphHighlighted.value(text)
+                fun onParagraphFound(text: String, index: Int) {
+                    currentOnParagraphHighlighted.value(text, index)
                 }
 
                 @JavascriptInterface
                 fun onSentenceCountFound(count: Int) {
                     currentOnSentenceCountChanged.value(count)
+                }
+
+                @JavascriptInterface
+                fun onParagraphDoubleClicked(index: Int) {
+                    currentOnParagraphDoubleClicked.value(index)
                 }
             }
             WebView(context).apply {
@@ -513,6 +574,20 @@ private fun ChapterWebView(
                 lastAppliedFontSize = fontSize
                 webView.evaluateJavascript(
                     "document.body.style.fontSize = '${fontSize}px'", null
+                )
+            }
+
+            if (scrollToParagraphIndex != null && scrollToParagraphIndex != lastAppliedScrollToIndex) {
+                lastAppliedScrollToIndex = scrollToParagraphIndex
+                webView.evaluateJavascript(
+                    "scrollToParagraphByIndex($scrollToParagraphIndex)", null
+                )
+            }
+
+            if (isSynchronized != lastAppliedSyncedState) {
+                lastAppliedSyncedState = isSynchronized
+                webView.evaluateJavascript(
+                    "setHighlightSynced($isSynchronized)", null
                 )
             }
         }
