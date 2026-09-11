@@ -5,8 +5,8 @@ La aplicación estará preparada para tablets en formato landscape de tal forma 
 El ancho de la parte de la izquiera es la mitad de la pantalla
 
 ## Roles
-* android-kotlin-development para preparar la base del programa
-*   sobre todo porque los EPUBs trabajan con XHTML y mucho javascript
+* android-kotlin-development para preparar la base del programa con el código Kotlin sobre todo porque los EPUBs trabajan con XHTML y mucho javascript
+* Debido a que hay mucho código que habrá que hacer con HTML también puedes usar el scrill frontend-design
 
 
 ## Layout principal

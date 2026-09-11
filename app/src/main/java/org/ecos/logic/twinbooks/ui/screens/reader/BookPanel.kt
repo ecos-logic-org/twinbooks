@@ -255,10 +255,24 @@ private fun ChapterWebView(
             }
 
             function getSentences(text) {
-                var raw = text.split(/([.!?])/);
+                var abbreviations = ['num', 'núm', 'rte', 'dr', 'dra', 'sr', 'sra', 'srta', 'prof', 'etc', 'vs', 'av', 'cfr', 'apdo', 'art', 'pág', 'pág', 'núm', 'núm'];
+                var placeholder = '\x00';
+                var processed = text;
+                
+                abbreviations.forEach(function(abbr) {
+                    var regex = new RegExp('\\b' + abbr + '\\.', 'gi');
+                    processed = processed.replace(regex, function(match) {
+                        return match.replace('.', placeholder);
+                    });
+                });
+                
+                var raw = processed.split(/([.!?])/);
                 var sentences = [];
                 for (var i = 0; i < raw.length - 1; i += 2) {
-                    sentences.push(raw[i] + raw[i + 1]);
+                    var sentence = (raw[i] + raw[i + 1]).replace(new RegExp(placeholder, 'g'), '.');
+                    if (sentence.trim().length > 0) {
+                        sentences.push(sentence);
+                    }
                 }
                 return sentences.length > 0 ? sentences : [text];
             }
