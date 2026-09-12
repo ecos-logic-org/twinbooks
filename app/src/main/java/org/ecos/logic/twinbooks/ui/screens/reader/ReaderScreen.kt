@@ -33,10 +33,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +71,7 @@ fun ReaderScreen(
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     var rightOffset by remember { mutableIntStateOf(0) }
     var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
+    var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
         leftSentenceIndex = -1
@@ -203,15 +206,15 @@ fun ReaderScreen(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
-                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
-                            .clickable { viewModel.resetBooks() },
+                            .background(Color(0xFFB71C1C), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFFD32F2F), RoundedCornerShape(6.dp))
+                            .clickable { showResetDialog = true },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "Change Books",
-                            tint = Color(0xFFB0B0B0),
+                            tint = Color(0xFFFFFFFF),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -352,6 +355,32 @@ fun ReaderScreen(
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Reset books") },
+            text = {
+                Text(
+                    "This will close both books and reset all reading progress. " +
+                            "This action cannot be undone.\n\nDo you want to continue?"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetDialog = false
+                    viewModel.resetBooks()
+                }) {
+                    Text("Accept")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }
