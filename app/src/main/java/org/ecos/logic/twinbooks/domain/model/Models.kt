@@ -33,5 +33,11 @@ data class ReadingState(
     val isSynchronized: Boolean = false,
     val syncOffset: Int = 0,
     val leftParagraphIndex: Int = -1,
-    val rightParagraphIndex: Int = -1
+    val rightParagraphIndex: Int = -1,
+    val leftSentenceIndex: Int = -1,
+    val leftSentenceCount: Int = 0,
+    val isTtsPlaying: Boolean = false,
+    val ttsTimeLimitMinutes: Int = 0,
+    val ttsRemainingSeconds: Long = 0L,
+    val ttsScrollToNextParagraphTrigger: Int = 0
 )

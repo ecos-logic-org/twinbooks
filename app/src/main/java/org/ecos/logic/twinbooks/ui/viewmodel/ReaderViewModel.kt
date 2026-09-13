@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,18 +16,32 @@ import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
+import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    private val ttsManager: TtsManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReadingState())
     val state: StateFlow<ReadingState> = _state.asStateFlow()
 
+    private var ttsTimerJob: Job? = null
+    var ttsRefreshTrigger = 0
+        private set
+
     init {
         restoreLatestSession()
+        ttsManager.onSentenceComplete = { onTtsSentenceComplete() }
+        ttsManager.init()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        ttsManager.shutdown()
+        ttsTimerJob?.cancel()
     }
 
     fun loadLeftBook(uri: Uri) {
@@ -164,6 +180,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun resetBooks() {
+        stopTts()
         _state.update {
             it.copy(
                 leftBook = null,
@@ -222,6 +239,131 @@ class ReaderViewModel @Inject constructor(
             }
         }
         _state.update { it.copy(rightParagraphIndex = index) }
+    }
+
+    // --- TTS Methods ---
+
+    fun toggleTts() {
+        if (_state.value.isTtsPlaying) {
+            pauseTts()
+        } else {
+            startTts()
+        }
+    }
+
+    private fun startTts() {
+        if (_state.value.leftBook == null) return
+        ttsManager.init()
+        _state.update { it.copy(isTtsPlaying = true) }
+        if (_state.value.ttsTimeLimitMinutes > 0) {
+            startTtsTimer()
+        }
+        ttsRefreshTrigger++
+    }
+
+    private fun pauseTts() {
+        ttsManager.stop()
+        _state.update { it.copy(isTtsPlaying = false) }
+        ttsTimerJob?.cancel()
+    }
+
+    fun stopTts() {
+        ttsManager.stop()
+        _state.update { it.copy(isTtsPlaying = false, ttsRemainingSeconds = 0) }
+        ttsTimerJob?.cancel()
+    }
+
+    fun cycleTtsTimeLimit() {
+        val current = _state.value.ttsTimeLimitMinutes
+        val next = when (current) {
+            0 -> 1
+            1 -> 15
+            15 -> 30
+            30 -> 45
+            else -> 0
+        }
+        _state.update { it.copy(ttsTimeLimitMinutes = next, ttsRemainingSeconds = 0) }
+        ttsTimerJob?.cancel()
+        if (next > 0 && _state.value.isTtsPlaying) {
+            startTtsTimer()
+        }
+    }
+
+    fun onTtsSentenceTextReceived(text: String) {
+        if (!_state.value.isTtsPlaying) return
+        ttsManager.speak(text, _state.value.leftSentenceIndex)
+    }
+
+    private fun onTtsSentenceComplete() {
+        viewModelScope.launch {
+            if (!_state.value.isTtsPlaying) return@launch
+            val current = _state.value.leftSentenceIndex
+            val nextIndex = current + 1
+            if (nextIndex < _state.value.leftSentenceCount) {
+                _state.update { it.copy(leftSentenceIndex = nextIndex) }
+                ttsRefreshTrigger++
+            } else {
+                advanceTtsParagraph()
+            }
+        }
+    }
+
+    private fun advanceTtsParagraph() {
+        _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+        _state.update { it.copy(ttsScrollToNextParagraphTrigger = it.ttsScrollToNextParagraphTrigger + 1) }
+    }
+
+    fun advanceTtsToNextChapter() {
+        val leftBook = _state.value.leftBook ?: return
+        val currentChapter = _state.value.leftPosition.chapterIndex
+        val totalChapters = leftBook.totalChapters
+        if (currentChapter < totalChapters - 1) {
+            navigateToChapter(true, currentChapter + 1)
+            _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+            viewModelScope.launch {
+                delay(500)
+                if (_state.value.isTtsPlaying) {
+                    ttsRefreshTrigger++
+                }
+            }
+        } else {
+            stopTts()
+        }
+    }
+
+    fun updateTtsSentenceIndex(index: Int) {
+        _state.update { it.copy(leftSentenceIndex = index) }
+    }
+
+    fun updateTtsSentenceCount(count: Int) {
+        val prev = _state.value.leftSentenceCount
+        val currentIdx = _state.value.leftSentenceIndex
+        _state.update {
+            it.copy(
+                leftSentenceCount = count,
+                leftSentenceIndex = if (count > 0 && currentIdx == -1) 0 else currentIdx
+            )
+        }
+        if (count > 0 && prev == 0 && _state.value.isTtsPlaying) {
+            ttsRefreshTrigger++
+        }
+    }
+
+    private fun startTtsTimer() {
+        ttsTimerJob?.cancel()
+        val totalSeconds = _state.value.ttsTimeLimitMinutes * 60L
+        _state.update { it.copy(ttsRemainingSeconds = totalSeconds) }
+        ttsTimerJob = viewModelScope.launch {
+            var remaining = totalSeconds
+            while (remaining > 0 && _state.value.isTtsPlaying) {
+                delay(1000)
+                remaining--
+                _state.update { it.copy(ttsRemainingSeconds = remaining) }
+            }
+            if (remaining <= 0) {
+                stopTts()
+            }
+        }
     }
 
     // --- Persistence Methods ---

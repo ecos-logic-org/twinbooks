@@ -58,7 +58,11 @@ fun BookPanel(
     isSynchronized: Boolean = false,
     onParagraphDoubleClicked: (Int) -> Unit = {},
     onParagraphIndexChanged: (Int) -> Unit = {},
-    scrollToParagraphIndex: Int? = null
+    scrollToParagraphIndex: Int? = null,
+    onSentenceTextFound: (String) -> Unit = {},
+    onReachedEndOfChapter: () -> Unit = {},
+    ttsRefreshTrigger: Int = 0,
+    ttsScrollToNextParagraphTrigger: Int = 0
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -90,9 +94,13 @@ fun BookPanel(
                     },
                     highlightSentenceIndex = currentSentenceIndex,
                     onSentenceCountChanged = onSentenceCountChanged,
+                    onSentenceTextFound = onSentenceTextFound,
                     isSynchronized = isSynchronized,
                     onParagraphDoubleClicked = onParagraphDoubleClicked,
-                    scrollToParagraphIndex = scrollToParagraphIndex
+                    onReachedEndOfChapter = onReachedEndOfChapter,
+                    scrollToParagraphIndex = scrollToParagraphIndex,
+                    ttsRefreshTrigger = ttsRefreshTrigger,
+                    ttsScrollToNextParagraphTrigger = ttsScrollToNextParagraphTrigger
                 )
             }
         }
@@ -145,9 +153,13 @@ private fun ChapterWebView(
     onParagraphHighlighted: (String, Int) -> Unit,
     highlightSentenceIndex: Int = -1,
     onSentenceCountChanged: (Int) -> Unit,
+    onSentenceTextFound: (String) -> Unit = {},
     isSynchronized: Boolean = false,
     onParagraphDoubleClicked: (Int) -> Unit = {},
-    scrollToParagraphIndex: Int? = null
+    onReachedEndOfChapter: () -> Unit = {},
+    scrollToParagraphIndex: Int? = null,
+    ttsRefreshTrigger: Int = 0,
+    ttsScrollToNextParagraphTrigger: Int = 0
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -156,12 +168,18 @@ private fun ChapterWebView(
     currentOnScrollChanged.value = onScrollChanged
     val currentOnSentenceCountChanged = remember { mutableStateOf(onSentenceCountChanged) }
     currentOnSentenceCountChanged.value = onSentenceCountChanged
+    val currentOnSentenceTextFound = remember { mutableStateOf(onSentenceTextFound) }
+    currentOnSentenceTextFound.value = onSentenceTextFound
     val currentOnParagraphDoubleClicked = remember { mutableStateOf(onParagraphDoubleClicked) }
     currentOnParagraphDoubleClicked.value = onParagraphDoubleClicked
+    val currentOnReachedEndOfChapter = remember { mutableStateOf(onReachedEndOfChapter) }
+    currentOnReachedEndOfChapter.value = onReachedEndOfChapter
     var lastAppliedSentenceIndex by remember { mutableIntStateOf(-1) }
     var lastAppliedFontSize by remember { mutableStateOf(fontSize) }
     var lastAppliedScrollToIndex by remember { mutableStateOf<Int?>(null) }
     var lastAppliedSyncedState by remember { mutableStateOf(isSynchronized) }
+    var lastAppliedTtsRefresh by remember { mutableIntStateOf(0) }
+    var lastAppliedTtsScrollToNext by remember { mutableIntStateOf(0) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -354,6 +372,11 @@ private fun ChapterWebView(
                         range.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     } catch(e) {}
                 }
+
+                if (window.ParagraphBridge) {
+                    window.ParagraphBridge.onSentenceTextFound(sentences[index].trim());
+                }
+
                 return sentences.length;
             }
 
@@ -362,6 +385,36 @@ private fun ChapterWebView(
                 if (!paragraph) return 0;
                 var sentences = getSentences(paragraph.textContent);
                 return sentences.length;
+            }
+
+            function getSentenceText(index) {
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph) return '';
+                var sentences = getSentences(paragraph.textContent);
+                if (index < 0 || index >= sentences.length) return '';
+                return sentences[index].trim();
+            }
+
+            function scrollToNextParagraph() {
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph) {
+                    if (window.ParagraphBridge) {
+                        window.ParagraphBridge.onReachedEndOfChapter();
+                    }
+                    return false;
+                }
+                var next = paragraph.nextElementSibling;
+                while (next && next.tagName !== 'P') {
+                    next = next.nextElementSibling;
+                }
+                if (next) {
+                    next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return true;
+                }
+                if (window.ParagraphBridge) {
+                    window.ParagraphBridge.onReachedEndOfChapter();
+                }
+                return false;
             }
 
             (function() {
@@ -480,8 +533,18 @@ private fun ChapterWebView(
                 }
 
                 @JavascriptInterface
+                fun onSentenceTextFound(text: String) {
+                    currentOnSentenceTextFound.value(text)
+                }
+
+                @JavascriptInterface
                 fun onParagraphDoubleClicked(index: Int) {
                     currentOnParagraphDoubleClicked.value(index)
+                }
+
+                @JavascriptInterface
+                fun onReachedEndOfChapter() {
+                    currentOnReachedEndOfChapter.value()
                 }
             }
             WebView(context).apply {
@@ -589,6 +652,23 @@ private fun ChapterWebView(
                 webView.evaluateJavascript(
                     "setHighlightSynced($isSynchronized)", null
                 )
+            }
+
+            if (ttsRefreshTrigger != lastAppliedTtsRefresh && highlightSentenceIndex >= 0) {
+                lastAppliedTtsRefresh = ttsRefreshTrigger
+                webView.evaluateJavascript(
+                    "highlightSentence($highlightSentenceIndex)"
+                ) { result ->
+                    val count = result?.replace("\"", "")?.toIntOrNull()
+                    if (count != null && count > 0) {
+                        currentOnSentenceCountChanged.value(count)
+                    }
+                }
+            }
+
+            if (ttsScrollToNextParagraphTrigger != lastAppliedTtsScrollToNext) {
+                lastAppliedTtsScrollToNext = ttsScrollToNextParagraphTrigger
+                webView.evaluateJavascript("scrollToNextParagraph()", null)
             }
         }
     )

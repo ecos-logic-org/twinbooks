@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
@@ -65,16 +67,14 @@ fun ReaderScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    var leftSentenceIndex by remember { mutableIntStateOf(-1) }
     var rightSentenceIndex by remember { mutableIntStateOf(-1) }
-    var leftSentenceCount by remember { mutableIntStateOf(0) }
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     var rightOffset by remember { mutableIntStateOf(0) }
     var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
-        leftSentenceIndex = -1
+        viewModel.updateTtsSentenceIndex(-1)
         rightSentenceIndex = -1
         rightOffset = 0
     }
@@ -134,24 +134,26 @@ fun ReaderScreen(
                         book = state.leftBook!!,
                         position = state.leftPosition,
                         fontSize = state.fontSize,
-                        currentSentenceIndex = leftSentenceIndex,
+                        currentSentenceIndex = state.leftSentenceIndex,
                         onSentenceCountChanged = { count ->
-                            leftSentenceCount = count
-                            if (count > 0 && leftSentenceIndex == -1) {
-                                leftSentenceIndex = 0
-                            }
+                            viewModel.updateTtsSentenceCount(count)
+                        },
+                        onSentenceTextFound = { text ->
+                            viewModel.onTtsSentenceTextReceived(text)
                         },
                         onPrevSentence = {
-                            rightOffset = rightSentenceIndex - leftSentenceIndex
-                            leftSentenceIndex = (leftSentenceIndex - 1).coerceAtLeast(0)
-                            rightSentenceIndex = (leftSentenceIndex + rightOffset).coerceAtLeast(0)
+                            rightOffset = rightSentenceIndex - state.leftSentenceIndex
+                            val newIndex = (state.leftSentenceIndex - 1).coerceAtLeast(0)
+                            viewModel.updateTtsSentenceIndex(newIndex)
+                            rightSentenceIndex = (newIndex + rightOffset).coerceAtLeast(0)
                         },
                         onNextSentence = {
-                            rightOffset = rightSentenceIndex - leftSentenceIndex
-                            leftSentenceIndex = (leftSentenceIndex + 1).coerceAtMost(
-                                (leftSentenceCount - 1).coerceAtLeast(0)
+                            rightOffset = rightSentenceIndex - state.leftSentenceIndex
+                            val newIndex = (state.leftSentenceIndex + 1).coerceAtMost(
+                                (state.leftSentenceCount - 1).coerceAtLeast(0)
                             )
-                            rightSentenceIndex = (leftSentenceIndex + rightOffset)
+                            viewModel.updateTtsSentenceIndex(newIndex)
+                            rightSentenceIndex = (newIndex + rightOffset)
                                 .coerceAtMost((rightSentenceCount - 1).coerceAtLeast(0))
                         },
                         onPositionChanged = { chapter, offset, paragraphText ->
@@ -163,13 +165,13 @@ fun ReaderScreen(
                         onPrevChapter = {
                             val newChapter = (state.leftPosition.chapterIndex - 1).coerceAtLeast(0)
                             viewModel.navigateToChapter(true, newChapter)
-                            leftSentenceIndex = 0
+                            viewModel.updateTtsSentenceIndex(0)
                         },
                         onNextChapter = {
                             val newChapter = (state.leftPosition.chapterIndex + 1)
                                 .coerceAtMost((state.leftBook?.totalChapters ?: 1) - 1)
                             viewModel.navigateToChapter(true, newChapter)
-                            leftSentenceIndex = 0
+                            viewModel.updateTtsSentenceIndex(0)
                         },
                         isLeft = true,
                         isSynchronized = state.isSynchronized,
@@ -181,6 +183,11 @@ fun ReaderScreen(
                             if (state.isSynchronized && index >= 0) {
                                 scrollToRightIndex = index + state.syncOffset
                             }
+                        },
+                        ttsRefreshTrigger = viewModel.ttsRefreshTrigger,
+                        ttsScrollToNextParagraphTrigger = state.ttsScrollToNextParagraphTrigger,
+                        onReachedEndOfChapter = {
+                            viewModel.advanceTtsToNextChapter()
                         }
                     )
                 } else {
@@ -273,6 +280,53 @@ fun ReaderScreen(
                             contentDescription = "Decrease font size",
                             tint = Color(0xFFB0B0B0),
                             modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(
+                                if (state.isTtsPlaying) Color(0xFF1B5E20) else Color(0xFF2A2A2A),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (state.isTtsPlaying) Color(0xFF4CAF50) else Color(0xFF555555),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { viewModel.toggleTts() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (state.isTtsPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (state.isTtsPlaying) "Pause TTS" else "Play TTS",
+                            tint = if (state.isTtsPlaying) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                            .clickable { viewModel.cycleTtsTimeLimit() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (state.ttsTimeLimitMinutes > 0) "${state.ttsTimeLimitMinutes}" else "∞",
+                            color = if (state.ttsTimeLimitMinutes > 0) Color(0xFF4FC3F7) else Color(0xFFB0B0B0),
+                            fontSize = 11.sp
+                        )
+                    }
+                    if (state.ttsRemainingSeconds > 0) {
+                        val minutes = (state.ttsRemainingSeconds / 60).toInt()
+                        val seconds = (state.ttsRemainingSeconds % 60).toInt()
+                        Text(
+                            text = "%d:%02d".format(minutes, seconds),
+                            color = Color(0xFF4FC3F7),
+                            fontSize = 9.sp
                         )
                     }
                 }
