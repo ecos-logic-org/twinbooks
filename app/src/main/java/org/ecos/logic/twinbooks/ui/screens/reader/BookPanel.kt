@@ -421,6 +421,7 @@ private fun ChapterWebView(
                 var READING_ZONE_Y = $readingZoneY;
                 var highlighted = null;
                 var highlightTimer = null;
+                var isClickScrolling = false;
 
                 function highlightParagraph() {
                     var elements = document.querySelectorAll('p');
@@ -470,6 +471,7 @@ private fun ChapterWebView(
                 }
 
                 function debouncedHighlight() {
+                    if (isClickScrolling) return;
                     if (highlightTimer) clearTimeout(highlightTimer);
                     highlightTimer = setTimeout(highlightParagraph, 80);
                 }
@@ -496,7 +498,9 @@ private fun ChapterWebView(
                             setTimeout(function() { highlightSentence(0); }, 50);
                         }
 
+                        isClickScrolling = true;
                         clickedElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        setTimeout(function() { isClickScrolling = false; }, 1500);
                     });
 
                     paragraphs[i].addEventListener('dblclick', function(e) {
