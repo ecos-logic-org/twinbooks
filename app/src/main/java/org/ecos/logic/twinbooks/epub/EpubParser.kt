@@ -8,6 +8,7 @@ import io.documentnode.epub4j.epub.EpubReader
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.Chapter
 import java.io.InputStream
+import java.nio.charset.StandardCharsets
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +29,9 @@ class EpubParser @Inject constructor(
             val spine = book.spine
             val spineReferences = spine.spineReferences
 
+            // Load TOC from NCX/NAV for proper chapter titles
+            val tocMap = buildTocMap(book.tableOfContents.tocReferences, title)
+
             val imageResources = mutableMapOf<String, Pair<String, ByteArray>>()
             for (resource in book.contents) {
                 val mediaType = resource.mediaType?.toString() ?: continue
@@ -38,8 +42,16 @@ class EpubParser @Inject constructor(
 
             val chapters = spineReferences.mapIndexed { index, spineRef ->
                 val resource = spineRef.resource
-                var html = String(resource.data, Charsets.UTF_8)
-                val chapterTitle = extractTitleFromHtml(html) ?: "Chapter ${index + 1}"
+                var html = String(resource.data, StandardCharsets.UTF_8)
+
+                // Try to get title from TOC (NCX/NAV) first, fall back to HTML title
+                val chapterTitle = getChapterTitle(
+                    index = index,
+                    spineHref = resource.href ?: "",
+                    html = html,
+                    tocMap = tocMap,
+                    bookTitle = title
+                )
 
                 html = embedImagesAsDataUris(html, resource.href ?: "", imageResources)
 
@@ -60,6 +72,70 @@ class EpubParser @Inject constructor(
             e.printStackTrace()
             null
         }
+    }
+
+    /**
+     * Builds a map from normalized href to chapter title from the NCX/NAV table of contents.
+     * Filters out entries that have the same title as the book (likely not real chapter titles).
+     */
+    private fun buildTocMap(tocReferences: List<io.documentnode.epub4j.domain.TOCReference>, bookTitle: String): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        for (tocRef in tocReferences) {
+            val href = tocRef.completeHref ?: continue
+            val tocTitle = tocRef.title?.trim() ?: continue
+            // Skip entries that just have the book title (not useful chapter titles)
+            if (tocTitle.equals(bookTitle, ignoreCase = true)) continue
+            val normalizedHref = normalizeHref(href)
+            if (normalizedHref.isNotEmpty()) {
+                map[normalizedHref] = tocTitle
+            }
+        }
+        return map
+    }
+
+    /**
+     * Gets the best available chapter title:
+     * 1. From TOC (NCX/NAV) matched by href
+     * 2. From HTML <title> tag (if different from book title)
+     * 3. Fallback to "Chapter N"
+     */
+    private fun getChapterTitle(
+        index: Int,
+        spineHref: String,
+        html: String,
+        tocMap: Map<String, String>,
+        bookTitle: String
+    ): String {
+        // 1. Try to match by href in TOC map
+        val normalizedSpineHref = normalizeHref(spineHref)
+        if (normalizedSpineHref.isNotEmpty()) {
+            tocMap[normalizedSpineHref]?.let { return it }
+            // Also try matching without fragment
+            val spineHrefNoFragment = normalizedSpineHref.substringBefore('#')
+            if (spineHrefNoFragment.isNotEmpty()) {
+                tocMap[spineHrefNoFragment]?.let { return it }
+            }
+        }
+
+        // 2. Try HTML title tag
+        val htmlTitle = extractTitleFromHtml(html)
+        if (htmlTitle != null && !htmlTitle.equals(bookTitle, ignoreCase = true) && htmlTitle.isNotBlank()) {
+            return htmlTitle
+        }
+
+        // 3. Fallback
+        return "Chapter ${index + 1}"
+    }
+
+    /** Normalizes href by removing fragment and query, and resolving relative paths */
+    private fun normalizeHref(href: String): String {
+        var clean = href.substringBefore('#').substringBefore('?')
+        // Handle relative paths like "OEBPS/chapter1.xhtml#section" -> "chapter1.xhtml"
+        val lastSlash = clean.lastIndexOf('/')
+        if (lastSlash >= 0) {
+            clean = clean.substring(lastSlash + 1)
+        }
+        return clean
     }
 
     private fun embedImagesAsDataUris(
