@@ -223,6 +223,11 @@ class ReaderViewModel @Inject constructor(
         saveCurrentSession()
     }
 
+    fun toggleBottomBarVisibility() {
+        _state.update { it.copy(isBottomBarVisible = !it.isBottomBarVisible) }
+        saveCurrentSession()
+    }
+
     fun updateLeftParagraphIndex(index: Int) {
         _state.update { it.copy(leftParagraphIndex = index) }
     }

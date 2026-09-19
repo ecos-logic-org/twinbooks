@@ -39,5 +39,6 @@ data class ReadingState(
     val isTtsPlaying: Boolean = false,
     val ttsTimeLimitMinutes: Int = 0,
     val ttsRemainingSeconds: Long = 0L,
-    val ttsScrollToNextParagraphTrigger: Int = 0
+    val ttsScrollToNextParagraphTrigger: Int = 0,
+    val isBottomBarVisible: Boolean = false
 )
