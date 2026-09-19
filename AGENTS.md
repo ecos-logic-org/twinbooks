@@ -5,7 +5,7 @@ Android tablet app for bilingual reading: two EPUBs side-by-side (left=learning 
 ## Build & Verify
 
 ```bash
-./gradlew assembleDebug          # Build
+./gradlew assembleDebug          # Build (compilation check)
 ./gradlew lintDebug              # Lint
 ./gradlew testDebug              # Tests (currently none)
 ```
@@ -28,9 +28,11 @@ Always run `./gradlew assembleDebug` after changes to verify compilation.
 | File | Purpose |
 |------|---------|
 | `MainActivity.kt` | Single activity, edge-to-edge, landscape-only |
-| `ReaderViewModel.kt` | All state management, session persistence |
-| `BookPanel.kt` | WebView rendering with JS bridge (`ParagraphBridge`) |
-| `EpubParser.kt` | EPUB parsing, TOC extraction, image embedding |
+| `ReaderViewModel.kt` | All state management, session persistence, TTS orchestration |
+| `ReaderScreen.kt` | Main composable: two-panel layout, divider controls, book launchers |
+| `BookPanel.kt` | WebView rendering with JS interface (`ParagraphBridge`) |
+| `TtsManager.kt` | Android TextToSpeech wrapper (sentence-by-sentence playback) |
+| `EpubParser.kt` | EPUB parsing, TOC extraction, image embedding as base64 data URIs |
 | `TwinBooksDatabase.kt` | Room DB + migrations (add new migrations here) |
 | `AppModule.kt` | Hilt modules (DatabaseModule, RepositoryModule) |
 
@@ -49,7 +51,7 @@ State is persisted on every position change via `saveCurrentSession()`.
 
 ## EPUB Rendering
 
-Book content renders in WebView with injected CSS/JS. The JS bridge `ParagraphBridge` handles:
+Book content renders in WebView with injected CSS/JS. The JS interface `ParagraphBridge` (registered via `addJavascriptInterface`) handles:
 - Paragraph highlighting (reading zone)
 - Sentence navigation
 - Sync state between panels
@@ -57,14 +59,18 @@ Book content renders in WebView with injected CSS/JS. The JS bridge `ParagraphBr
 
 Dark theme overrides all EPUB styles via `!important` CSS in `BookPanel.kt`.
 
+**NLP**: `compromise.js` (in `app/src/main/assets/`) provides client-side sentence splitting inside the WebView. It's loaded via `<script src="file:///android_asset/compromise.js">`. If sentence detection breaks, check this library first.
+
 ## Room Migrations
 
 When adding columns to `reading_sessions` table:
 1. Add field to `ReadingSessionEntity`
 2. Add migration in `TwinBooksDatabase.MIGRATION_X_Y`
-3. Increment DB version
+3. Increment DB version in `@Database(version = N)`
 4. Add mapping in `BookRepositoryImpl` (toDomain/toEntity)
 5. Update `ReadingSession` domain model if needed
+
+**Note**: `ReadingSessionEntity.lastOpenedTimestamp` exists on the entity but is NOT mapped to the domain model `ReadingSession`. New fields that follow the same pattern (entity-only, no domain exposure) are fine, but be intentional about it.
 
 ## Skills
 
