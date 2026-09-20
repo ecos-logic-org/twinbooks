@@ -457,11 +457,27 @@ class ReaderViewModel @Inject constructor(
             30 -> 45
             else -> 0
         }
-        _state.update { it.copy(ttsTimeLimitMinutes = next, ttsRemainingSeconds = 0) }
+        setTtsTimeLimit(next)
+    }
+
+    fun setTtsTimeLimit(minutes: Int) {
+        _state.update { it.copy(ttsTimeLimitMinutes = minutes, ttsRemainingSeconds = 0) }
         ttsTimerJob?.cancel()
-        if (next > 0 && _state.value.isTtsPlaying) {
+        if (minutes > 0 && _state.value.isTtsPlaying) {
             startTtsTimer()
         }
+        saveCurrentSession()
+    }
+
+    fun setTtsSpeed(speed: Float) {
+        _state.update { it.copy(ttsSpeed = speed) }
+        saveCurrentSession()
+    }
+
+    fun setTtsBilingualMode(mode: TtsBilingualMode) {
+        _state.update { it.copy(ttsBilingualMode = mode) }
+        isBilingualPendingTranslation = false
+        bilingualPhase = 0
         saveCurrentSession()
     }
 
@@ -600,20 +616,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleBilingualTtsMode() {
-        val newMode = TtsBilingualMode.next(_state.value.ttsBilingualMode)
-        _state.update { it.copy(ttsBilingualMode = newMode) }
-        isBilingualPendingTranslation = false
-        bilingualPhase = 0
-        Log.d("TtsBilingual", "TTS bilingual mode: ${newMode.label}")
-        saveCurrentSession()
+        setTtsBilingualMode(TtsBilingualMode.next(_state.value.ttsBilingualMode))
     }
 
     fun cycleTtsSpeed() {
         val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
         val current = _state.value.ttsSpeed
         val nextIndex = (speeds.indexOf(current) + 1) % speeds.size
-        _state.update { it.copy(ttsSpeed = speeds[nextIndex]) }
-        saveCurrentSession()
+        setTtsSpeed(speeds[nextIndex])
     }
 
     private fun advanceTtsParagraph() {

@@ -39,6 +39,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -396,11 +398,11 @@ fun ReaderScreen(
         onIncreaseFontSize = { viewModel.increaseFontSize() },
         onDecreaseFontSize = { viewModel.decreaseFontSize() },
         ttsTimeLimitMinutes = state.ttsTimeLimitMinutes,
-        onCycleTtsTimeLimit = { viewModel.cycleTtsTimeLimit() },
+        onSetTtsTimeLimit = { viewModel.setTtsTimeLimit(it) },
         ttsSpeed = state.ttsSpeed,
-        onCycleTtsSpeed = { viewModel.cycleTtsSpeed() },
+        onSetTtsSpeed = { viewModel.setTtsSpeed(it) },
         ttsBilingualMode = state.ttsBilingualMode,
-        onCycleBilingualTtsMode = { viewModel.toggleBilingualTtsMode() },
+        onSetTtsBilingualMode = { viewModel.setTtsBilingualMode(it) },
         onResetBooks = { showResetDialog = true },
         onToggleBottomBar = { viewModel.toggleBottomBarVisibility() }
     )
@@ -477,11 +479,11 @@ private fun BottomBar(
     onIncreaseFontSize: () -> Unit,
     onDecreaseFontSize: () -> Unit,
     ttsTimeLimitMinutes: Int,
-    onCycleTtsTimeLimit: () -> Unit,
+    onSetTtsTimeLimit: (Int) -> Unit,
     ttsSpeed: Float,
-    onCycleTtsSpeed: () -> Unit,
+    onSetTtsSpeed: (Float) -> Unit,
     ttsBilingualMode: TtsBilingualMode,
-    onCycleBilingualTtsMode: () -> Unit,
+    onSetTtsBilingualMode: (TtsBilingualMode) -> Unit,
     onResetBooks: () -> Unit,
     onToggleBottomBar: () -> Unit
 ) {
@@ -558,24 +560,23 @@ private fun BottomBar(
                     }
                 }
 
-                // TTS controls group (time limit + bilingual)
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF232323), RoundedCornerShape(6.dp))
-                        .border(1.dp, Color(0xFF444444), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                // TTS controls group (time limit + bilingual + speed)
+                var showTimeLimitMenu by remember { mutableStateOf(false) }
+                var showBilingualMenu by remember { mutableStateOf(false) }
+                var showSpeedMenu by remember { mutableStateOf(false) }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // TTS max time limit
+                    // TTS time limit dropdown
+                    Box {
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
                                 .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
                                 .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
-                                .clickable { onCycleTtsTimeLimit() },
+                                .clickable { showTimeLimitMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -584,7 +585,29 @@ private fun BottomBar(
                                 fontSize = 10.sp
                             )
                         }
-                        // Bilingual TTS mode toggle (wider, with flags)
+                        DropdownMenu(
+                            expanded = showTimeLimitMenu,
+                            onDismissRequest = { showTimeLimitMenu = false }
+                        ) {
+                            listOf(0, 1, 15, 30, 45).forEach { minutes ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = if (minutes > 0) "${minutes} min" else "Sin límite",
+                                            color = if (minutes == ttsTimeLimitMinutes) Color(0xFF4FC3F7) else Color(0xFFB0B0B0)
+                                        )
+                                    },
+                                    onClick = {
+                                        onSetTtsTimeLimit(minutes)
+                                        showTimeLimitMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Bilingual mode dropdown
+                    Box {
                         Box(
                             modifier = Modifier
                                 .height(28.dp)
@@ -598,7 +621,7 @@ private fun BottomBar(
                                     if (ttsBilingualMode != TtsBilingualMode.OFF) Color(0xFFAB47BC) else Color(0xFF555555),
                                     RoundedCornerShape(4.dp)
                                 )
-                                .clickable { onCycleBilingualTtsMode() },
+                                .clickable { showBilingualMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Row(
@@ -608,16 +631,16 @@ private fun BottomBar(
                                 val isActive = ttsBilingualMode != TtsBilingualMode.OFF
                                 val alpha = if (isActive) 1f else 0.4f
                                 Text(
-                                    text = "\uD83C\uDDEC\uD83C\uDDE7", // 🇬🇧
+                                    text = "\uD83C\uDDEC\uD83C\uDDE7",
                                     fontSize = 13.sp,
                                     modifier = Modifier.graphicsLayer { this.alpha = alpha }
                                 )
                                 Text(
                                     text = when (ttsBilingualMode) {
                                         TtsBilingualMode.OFF -> ""
-                                        TtsBilingualMode.EN_TO_ES -> "\u2192" // →
-                                        TtsBilingualMode.ES_TO_EN -> "\u2190" // ←
-                                        TtsBilingualMode.EN_ES_EN -> "\u21C4" // ⇄
+                                        TtsBilingualMode.EN_TO_ES -> "\u2192"
+                                        TtsBilingualMode.ES_TO_EN -> "\u2190"
+                                        TtsBilingualMode.EN_ES_EN -> "\u21C4"
                                     },
                                     color = if (isActive) Color(0xFFCE93D8) else Color(0xFF555555),
                                     fontSize = 10.sp,
@@ -625,20 +648,61 @@ private fun BottomBar(
                                     modifier = Modifier.padding(horizontal = 1.dp)
                                 )
                                 Text(
-                                    text = "\uD83C\uDDEA\uD83C\uDDF8", // 🇪🇸
+                                    text = "\uD83C\uDDEA\uD83C\uDDF8",
                                     fontSize = 13.sp,
                                     modifier = Modifier.graphicsLayer { this.alpha = alpha }
                                 )
                             }
                         }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        // TTS speed (English only)
+                        DropdownMenu(
+                            expanded = showBilingualMenu,
+                            onDismissRequest = { showBilingualMenu = false }
+                        ) {
+                            TtsBilingualMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (mode != TtsBilingualMode.OFF) {
+                                                Text(text = "\uD83C\uDDEC\uD83C\uDDE7", fontSize = 14.sp)
+                                                Text(
+                                                    text = when (mode) {
+                                                        TtsBilingualMode.EN_TO_ES -> " \u2192 "
+                                                        TtsBilingualMode.ES_TO_EN -> " \u2190 "
+                                                        TtsBilingualMode.EN_ES_EN -> " \u21C4 "
+                                                        else -> ""
+                                                    },
+                                                    color = Color(0xFFCE93D8),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(text = "\uD83C\uDDEA\uD83C\uDDF8", fontSize = 14.sp)
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = mode.label,
+                                                color = if (mode == ttsBilingualMode) Color(0xFFCE93D8) else Color(0xFFB0B0B0)
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        onSetTtsBilingualMode(mode)
+                                        showBilingualMenu = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // TTS speed dropdown
+                    Box {
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
                                 .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
                                 .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
-                                .clickable { onCycleTtsSpeed() },
+                                .clickable { showSpeedMenu = true },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -646,6 +710,25 @@ private fun BottomBar(
                                 color = Color(0xFFB0B0B0),
                                 fontSize = 9.sp
                             )
+                        }
+                        DropdownMenu(
+                            expanded = showSpeedMenu,
+                            onDismissRequest = { showSpeedMenu = false }
+                        ) {
+                            listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f).forEach { speed ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "${speed}x",
+                                            color = if (speed == ttsSpeed) Color(0xFF4FC3F7) else Color(0xFFB0B0B0)
+                                        )
+                                    },
+                                    onClick = {
+                                        onSetTtsSpeed(speed)
+                                        showSpeedMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
