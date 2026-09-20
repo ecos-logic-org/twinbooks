@@ -17,13 +17,15 @@ import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
+import org.ecos.logic.twinbooks.translation.TranslationManager
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
     private val bookRepository: BookRepository,
-    private val ttsManager: TtsManager
+    private val ttsManager: TtsManager,
+    private val translationManager: TranslationManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReadingState())
@@ -37,6 +39,13 @@ class ReaderViewModel @Inject constructor(
         restoreLatestSession()
         ttsManager.onSentenceComplete = { onTtsSentenceComplete() }
         ttsManager.init()
+        
+        // Initialize translation manager in background
+        viewModelScope.launch {
+            Log.d("ReaderViewModel", "Initializing translation manager...")
+            val ready = translationManager.initialize()
+            Log.d("ReaderViewModel", "Translation manager ready: $ready")
+        }
     }
 
     override fun onCleared() {
@@ -158,9 +167,18 @@ class ReaderViewModel @Inject constructor(
     fun navigateToChapter(isLeft: Boolean, chapterIndex: Int) {
         _state.update { state ->
             if (isLeft) {
-                state.copy(leftPosition = state.leftPosition.copy(chapterIndex = chapterIndex, scrollOffset = 0, paragraphText = ""))
+                state.copy(
+                    leftPosition = state.leftPosition.copy(chapterIndex = chapterIndex, scrollOffset = 0, paragraphText = ""),
+                    // Clear anchor when changing chapter (anchor is only valid within same chapter pair)
+                    syncAnchorLeftIndex = -1,
+                    syncAnchorRightIndex = -1
+                )
             } else {
-                state.copy(rightPosition = state.rightPosition.copy(chapterIndex = chapterIndex, scrollOffset = 0, paragraphText = ""))
+                state.copy(
+                    rightPosition = state.rightPosition.copy(chapterIndex = chapterIndex, scrollOffset = 0, paragraphText = ""),
+                    syncAnchorLeftIndex = -1,
+                    syncAnchorRightIndex = -1
+                )
             }
         }
         saveCurrentSession()
@@ -193,7 +211,9 @@ class ReaderViewModel @Inject constructor(
                 isSynchronized = false,
                 syncOffset = 0,
                 leftParagraphIndex = -1,
-                rightParagraphIndex = -1
+                rightParagraphIndex = -1,
+                syncAnchorLeftIndex = -1,
+                syncAnchorRightIndex = -1
             )
         }
     }
@@ -220,7 +240,12 @@ class ReaderViewModel @Inject constructor(
     fun toggleSync() {
         val newSyncState = !_state.value.isSynchronized
         _state.update {
-            it.copy(isSynchronized = newSyncState)
+            it.copy(
+                isSynchronized = newSyncState,
+                // Clear anchor when toggling sync
+                syncAnchorLeftIndex = if (!newSyncState) -1 else it.syncAnchorLeftIndex,
+                syncAnchorRightIndex = if (!newSyncState) -1 else it.syncAnchorRightIndex
+            )
         }
         saveCurrentSession()
         
@@ -249,13 +274,132 @@ class ReaderViewModel @Inject constructor(
         if (currentState.isSynchronized) {
             val leftIndex = currentState.leftParagraphIndex
             if (leftIndex >= 0) {
-                val newOffset = index - leftIndex
-                _state.update { it.copy(rightParagraphIndex = index, syncOffset = newOffset) }
+                // Always update anchor to reflect current state
+                // This ensures the anchor is always correct regardless of who scrolled
+                _state.update {
+                    it.copy(
+                        rightParagraphIndex = index,
+                        syncAnchorLeftIndex = leftIndex,
+                        syncAnchorRightIndex = index
+                    )
+                }
+                Log.d("SyncTranslation", "Anchor updated: Left=$leftIndex → Right=$index (offset=${index - leftIndex})")
                 saveCurrentSession()
                 return
             }
         }
         _state.update { it.copy(rightParagraphIndex = index) }
+    }
+
+    // --- Translation-based Sync ---
+
+    /**
+     * Find the best matching paragraph in the right book using translation
+     * @param sourceText The English text from the left book
+     * @param targetIndex The progress-based target index in the right book
+     * @param candidates The list of Spanish paragraphs from the right book
+     * @return The index of the best matching paragraph
+     */
+    suspend fun findBestMatchWithTranslation(
+        sourceText: String,
+        targetIndex: Int,
+        candidates: List<String>
+    ): Int {
+        return translationManager.findBestMatch(
+            sourceText = sourceText,
+            candidates = candidates,
+            startIndex = targetIndex,
+            range = 5
+        )
+    }
+
+    /**
+     * Find and sync the best matching paragraph using translation
+     * Called from ReaderScreen when sync is active
+     */
+    fun findAndSyncBestMatch(
+        leftParagraphIndex: Int,
+        onBestMatchFound: (Int) -> Unit
+    ) {
+        val currentState = _state.value
+        val rightChapter = currentState.rightBook?.chapters?.getOrNull(currentState.rightPosition.chapterIndex)
+        val leftChapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex)
+
+        if (rightChapter == null || leftChapter == null) {
+            Log.d("SyncTranslation", "Cannot sync: rightChapter=${rightChapter != null}, leftChapter=${leftChapter != null}")
+            return
+        }
+
+        // Count paragraphs in both chapters
+        val leftParagraphs = extractParagraphs(leftChapter.htmlContent)
+        val rightParagraphs = extractParagraphs(rightChapter.htmlContent)
+        
+        if (rightParagraphs.isEmpty()) {
+            Log.d("SyncTranslation", "No paragraphs found in right chapter")
+            return
+        }
+
+        val leftTotal = leftParagraphs.size
+        val rightTotal = rightParagraphs.size
+        
+        // CHECK FOR ANCHOR: if user manually set a sync point, use it
+        val anchorLeft = currentState.syncAnchorLeftIndex
+        val anchorRight = currentState.syncAnchorRightIndex
+        if (anchorLeft >= 0 && anchorRight >= 0) {
+            // Calculate offset from anchor
+            val offset = leftParagraphIndex - anchorLeft
+            val targetIndex = (anchorRight + offset).coerceIn(0, rightTotal - 1)
+            Log.d("SyncTranslation", "Using anchor: Left=$anchorLeft→Right=$anchorRight, now Left=$leftParagraphIndex → Right=$targetIndex (offset=$offset)")
+            onBestMatchFound(targetIndex)
+            return
+        }
+
+        // NO ANCHOR: try translation-based sync
+        val paragraphText = leftParagraphs.getOrElse(leftParagraphIndex) { "" }
+        if (paragraphText.isEmpty()) {
+            val targetIndex = ((leftParagraphIndex.toFloat() / leftTotal) * rightTotal).toInt()
+                .coerceIn(0, rightTotal - 1)
+            Log.d("SyncTranslation", "No left text, progress sync: Left=$leftParagraphIndex/$leftTotal → Right=$targetIndex/$rightTotal")
+            onBestMatchFound(targetIndex)
+            return
+        }
+
+        if (!translationManager.isReady.value) {
+            val targetIndex = ((leftParagraphIndex.toFloat() / leftTotal) * rightTotal).toInt()
+                .coerceIn(0, rightTotal - 1)
+            Log.d("SyncTranslation", "Translation not ready, progress sync: Left=$leftParagraphIndex/$leftTotal → Right=$targetIndex/$rightTotal")
+            onBestMatchFound(targetIndex)
+            return
+        }
+
+        // Translation-based sync
+        val targetIndex = ((leftParagraphIndex.toFloat() / leftTotal) * rightTotal).toInt()
+            .coerceIn(0, rightTotal - 1)
+
+        viewModelScope.launch {
+            Log.d("SyncTranslation", "Translation sync: Left=$leftParagraphIndex/$leftTotal, Target=$targetIndex, Candidates=$rightTotal")
+
+            val bestIndex = translationManager.findBestMatch(
+                sourceText = paragraphText,
+                candidates = rightParagraphs,
+                startIndex = targetIndex,
+                range = 5
+            )
+
+            Log.d("SyncTranslation", "Result: Left=$leftParagraphIndex → Right=$bestIndex (target was $targetIndex)")
+            onBestMatchFound(bestIndex)
+        }
+    }
+
+    /**
+     * Extract paragraphs from HTML content
+     */
+    private fun extractParagraphs(html: String): List<String> {
+        return Regex("<p[^>]*>(.*?)</p>", RegexOption.DOT_MATCHES_ALL)
+            .findAll(html)
+            .map { it.groupValues[1].replace(Regex("<[^>]+>"), "").trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
     }
 
     // --- TTS Methods ---

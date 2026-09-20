@@ -59,6 +59,7 @@ fun BookPanel(
     onParagraphDoubleClicked: (Int) -> Unit = {},
     onParagraphIndexChanged: (Int) -> Unit = {},
     scrollToParagraphIndex: Int? = null,
+    syncSourceText: String? = null,
     onSentenceTextFound: (String) -> Unit = {},
     onReachedEndOfChapter: () -> Unit = {},
     ttsRefreshTrigger: Int = 0,

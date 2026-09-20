@@ -40,5 +40,11 @@ data class ReadingState(
     val ttsTimeLimitMinutes: Int = 0,
     val ttsRemainingSeconds: Long = 0L,
     val ttsScrollToNextParagraphTrigger: Int = 0,
-    val isBottomBarVisible: Boolean = false
+    val isBottomBarVisible: Boolean = false,
+    // Sync anchor points: set when user manually scrolls right book
+    // anchorRight = right paragraph index at the moment of manual scroll
+    // anchorLeft = left paragraph index at the moment of manual scroll
+    // Future sync: rightIndex = anchorRight + (leftIndex - anchorLeft)
+    val syncAnchorLeftIndex: Int = -1,
+    val syncAnchorRightIndex: Int = -1
 )

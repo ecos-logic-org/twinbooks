@@ -94,4 +94,11 @@ dependencies {
     implementation(libs.epub4j.core) {
         exclude(group = "xmlpull")
     }
+
+    // ML Kit Translation (on-device, offline)
+    implementation("com.google.mlkit:translate:17.0.3")
+    
+    // Play Services Tasks (for await() extension)
+    implementation("com.google.android.gms:play-services-tasks:18.1.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 }
