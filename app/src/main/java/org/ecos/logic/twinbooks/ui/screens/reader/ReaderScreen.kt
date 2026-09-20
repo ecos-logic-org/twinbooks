@@ -188,7 +188,20 @@ fun ReaderScreen(
                         onParagraphIndexChanged = { index ->
                             viewModel.updateLeftParagraphIndex(index)
                             if (state.isSynchronized && index >= 0) {
-                                scrollToRightIndex = index + state.syncOffset
+                                // Progress-based sync: works regardless of paragraph count differences
+                                val leftTotal = state.leftBook?.chapters?.getOrNull(state.leftPosition.chapterIndex)?.let {
+                                    Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it.htmlContent).count()
+                                } ?: 1
+                                val rightTotal = state.rightBook?.chapters?.getOrNull(state.rightPosition.chapterIndex)?.let {
+                                    Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it.htmlContent).count()
+                                } ?: 1
+                                
+                                val progress = index.toFloat() / leftTotal
+                                val targetIndex = (progress * rightTotal).toInt().coerceIn(0, rightTotal - 1)
+                                
+                                android.util.Log.d("SyncProgress", "Left: $index/$leftTotal (${progress * 100}%) → Right: $targetIndex/$rightTotal")
+                                
+                                scrollToRightIndex = targetIndex
                             }
                         },
                         ttsRefreshTrigger = viewModel.ttsRefreshTrigger,

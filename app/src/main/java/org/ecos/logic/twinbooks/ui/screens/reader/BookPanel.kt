@@ -433,23 +433,33 @@ private fun ChapterWebView(
                     var newHighlighted = null;
                     var newHighlightedIndex = -1;
                     var scrollAtBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 10);
-                    
-                    for (var i = 0; i < elements.length; i++) {
-                        var rect = elements[i].getBoundingClientRect();
-                        var isLast = (i === elements.length - 1);
+                    var bestDist = Infinity;
 
-                        if (isLast && scrollAtBottom) {
-                            newHighlighted = elements[i];
-                            newHighlightedIndex = i;
-                            break;
+                    // Handle last paragraph at scroll bottom
+                    if (scrollAtBottom && elements.length > 0) {
+                        var lastEl = elements[elements.length - 1];
+                        newHighlighted = lastEl;
+                        newHighlightedIndex = elements.length - 1;
+                    } else {
+                        // Find the paragraph CLOSEST to the reading zone
+                        for (var i = 0; i < elements.length; i++) {
+                            var rect = elements[i].getBoundingClientRect();
+
+                            // Skip paragraphs completely above reading zone
+                            if (rect.bottom < READING_ZONE_Y - 20) continue;
+                            // Stop at paragraphs completely below viewport
+                            if (rect.top > window.innerHeight) break;
+
+                            // Calculate distance from paragraph center to reading zone
+                            var center = (rect.top + rect.bottom) / 2;
+                            var dist = Math.abs(center - READING_ZONE_Y);
+
+                            if (dist < bestDist) {
+                                bestDist = dist;
+                                newHighlighted = elements[i];
+                                newHighlightedIndex = i;
+                            }
                         }
-
-                        if (rect.bottom < READING_ZONE_Y - 20) continue;
-                        if (rect.top > window.innerHeight) break;
-
-                        newHighlighted = elements[i];
-                        newHighlightedIndex = i;
-                        break;
                     }
 
                     if (newHighlighted && newHighlighted !== highlighted) {

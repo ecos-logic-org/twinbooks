@@ -1,6 +1,7 @@
 package org.ecos.logic.twinbooks.ui.viewmodel
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -217,10 +218,16 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleSync() {
+        val newSyncState = !_state.value.isSynchronized
         _state.update {
-            it.copy(isSynchronized = !it.isSynchronized)
+            it.copy(isSynchronized = newSyncState)
         }
         saveCurrentSession()
+        
+        // Run analysis when sync is activated
+        if (newSyncState) {
+            analyzeSyncQuality()
+        }
     }
 
     fun toggleBottomBarVisibility() {
@@ -230,6 +237,11 @@ class ReaderViewModel @Inject constructor(
 
     fun updateLeftParagraphIndex(index: Int) {
         _state.update { it.copy(leftParagraphIndex = index) }
+        
+        // Analyze drift every 10 paragraph changes during sync
+        if (_state.value.isSynchronized && index % 10 == 0 && index > 0) {
+            analyzeSyncDrift()
+        }
     }
 
     fun updateRightParagraphIndex(index: Int) {
@@ -438,6 +450,109 @@ class ReaderViewModel @Inject constructor(
                 syncOffset = s.syncOffset
             )
             bookRepository.saveSession(session)
+        }
+    }
+
+    // --- Sync Analysis Methods ---
+
+    /**
+     * Analyzes paragraph distribution in both books to understand sync quality.
+     * Call this when sync is activated or when debugging sync issues.
+     */
+    fun analyzeSyncQuality() {
+        val leftBook = _state.value.leftBook
+        val rightBook = _state.value.rightBook
+        
+        if (leftBook == null || rightBook == null) {
+            Log.d("SyncAnalysis", "Cannot analyze: both books must be loaded")
+            return
+        }
+
+        val leftChapterIndex = _state.value.leftPosition.chapterIndex
+        val rightChapterIndex = _state.value.rightPosition.chapterIndex
+        
+        val leftChapter = leftBook.chapters.getOrNull(leftChapterIndex)
+        val rightChapter = rightBook.chapters.getOrNull(rightChapterIndex)
+        
+        if (leftChapter == null || rightChapter == null) {
+            Log.d("SyncAnalysis", "Cannot analyze: chapter not found")
+            return
+        }
+
+        // Count paragraphs in each chapter
+        val leftParagraphs = countParagraphs(leftChapter.htmlContent)
+        val rightParagraphs = countParagraphs(rightChapter.htmlContent)
+        
+        // Count short paragraphs (< 50 chars)
+        val leftShort = countShortParagraphs(leftChapter.htmlContent, 50)
+        val rightShort = countShortParagraphs(rightChapter.htmlContent, 50)
+        
+        // Calculate current positions as percentages
+        val leftParagraphIndex = _state.value.leftParagraphIndex
+        val rightParagraphIndex = _state.value.rightParagraphIndex
+        
+        val leftProgress = if (leftParagraphs > 0) {
+            (leftParagraphIndex.toFloat() / leftParagraphs) * 100f
+        } else 0f
+        
+        val rightProgress = if (rightParagraphs > 0) {
+            (rightParagraphIndex.toFloat() / rightParagraphs) * 100f
+        } else 0f
+
+        Log.d("SyncAnalysis", "=== Sync Quality Analysis ===")
+        Log.d("SyncAnalysis", "Chapter: Left=$leftChapterIndex, Right=$rightChapterIndex")
+        Log.d("SyncAnalysis", "Paragraphs: Left=$leftParagraphs, Right=$rightParagraphs")
+        Log.d("SyncAnalysis", "Short (<50 chars): Left=$leftShort, Right=$rightShort")
+        Log.d("SyncAnalysis", "Current position: Left=$leftParagraphIndex, Right=$rightParagraphIndex")
+        Log.d("SyncAnalysis", "Progress: Left=${"%.1f".format(leftProgress)}%, Right=${"%.1f".format(rightProgress)}%")
+        Log.d("SyncAnalysis", "Sync offset: ${_state.value.syncOffset}")
+        Log.d("SyncAnalysis", "Paragraph ratio: ${"%.2f".format(rightParagraphs.toFloat() / leftParagraphs)}")
+        
+        // Recommendation
+        val shortPercent = ((leftShort + rightShort).toFloat() / (leftParagraphs + rightParagraphs)) * 100f
+        if (shortPercent > 30) {
+            Log.d("SyncAnalysis", "RECOMMENDATION: High short paragraph ratio (${shortPercent}%) - consider progress-based sync")
+        } else if (leftParagraphs != rightParagraphs) {
+            Log.d("SyncAnalysis", "RECOMMENDATION: Different paragraph counts - consider ratio-based sync")
+        } else {
+            Log.d("SyncAnalysis", "RECOMMENDATION: Current index-based sync may work")
+        }
+    }
+
+    /**
+     * Counts total paragraphs in HTML content
+     */
+    private fun countParagraphs(html: String): Int {
+        val regex = Regex("<p[^>]*>", RegexOption.IGNORE_CASE)
+        return regex.findAll(html).count()
+    }
+
+    /**
+     * Counts paragraphs shorter than minChars characters
+     */
+    private fun countShortParagraphs(html: String, minChars: Int): Int {
+        val paragraphRegex = Regex(
+            "<p[^>]*>(.*?)</p>", 
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        return paragraphRegex.findAll(html).count { match ->
+            val text = match.groupValues[1].replace(Regex("<[^>]+>"), "").trim()
+            text.length < minChars
+        }
+    }
+
+    /**
+     * Analyzes sync drift - how much the positions diverge over time
+     */
+    fun analyzeSyncDrift() {
+        val leftProgress = _state.value.leftPosition.progressPercent
+        val rightProgress = _state.value.rightPosition.progressPercent
+        val drift = leftProgress - rightProgress
+        
+        Log.d("SyncDrift", "Left: ${"%.1f".format(leftProgress)}%, Right: ${"%.1f".format(rightProgress)}%, Drift: ${"%.1f".format(drift)}%")
+        
+        if (Math.abs(drift) > 5) {
+            Log.w("SyncDrift", "WARNING: Significant drift detected (${drift}%)")
         }
     }
 }
