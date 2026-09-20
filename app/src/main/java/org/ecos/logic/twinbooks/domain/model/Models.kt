@@ -41,7 +41,8 @@ data class ReadingState(
     val ttsRemainingSeconds: Long = 0L,
     val ttsScrollToNextParagraphTrigger: Int = 0,
     val isBottomBarVisible: Boolean = false,
-    val isBilingualTtsMode: Boolean = false,
+    val ttsBilingualMode: TtsBilingualMode = TtsBilingualMode.OFF,
+    val ttsSpeed: Float = 1.0f,
     // Sync anchor points: set when user manually scrolls right book
     // anchorRight = right paragraph index at the moment of manual scroll
     // anchorLeft = left paragraph index at the moment of manual scroll
@@ -49,3 +50,22 @@ data class ReadingState(
     val syncAnchorLeftIndex: Int = -1,
     val syncAnchorRightIndex: Int = -1
 )
+
+/**
+ * Bilingual TTS reading modes.
+ * Each mode defines the order in which languages are spoken.
+ */
+enum class TtsBilingualMode(val label: String) {
+    OFF("Off"),
+    EN_TO_ES("EN → ES"),
+    ES_TO_EN("ES → EN"),
+    EN_ES_EN("EN → ES → EN");
+
+    companion object {
+        fun next(current: TtsBilingualMode): TtsBilingualMode {
+            val values = entries
+            val nextIndex = (values.indexOf(current) + 1) % values.size
+            return values[nextIndex]
+        }
+    }
+}

@@ -17,6 +17,7 @@ import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
+import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
@@ -36,6 +37,7 @@ class ReaderViewModel @Inject constructor(
         private set
     private var isBilingualPendingTranslation = false
     private var lastSpokenEnglishText = ""
+    private var bilingualPhase = 0 // 0=off, tracks which phase in bilingual flow
 
     init {
         restoreLatestSession()
@@ -427,6 +429,7 @@ class ReaderViewModel @Inject constructor(
     private fun pauseTts() {
         ttsManager.stop()
         isBilingualPendingTranslation = false
+        bilingualPhase = 0
         _state.update { it.copy(isTtsPlaying = false) }
         ttsTimerJob?.cancel()
     }
@@ -434,6 +437,7 @@ class ReaderViewModel @Inject constructor(
     fun stopTts() {
         ttsManager.stop()
         isBilingualPendingTranslation = false
+        bilingualPhase = 0
         lastSpokenEnglishText = ""
         _state.update { it.copy(isTtsPlaying = false, ttsRemainingSeconds = 0) }
         ttsTimerJob?.cancel()
@@ -458,39 +462,123 @@ class ReaderViewModel @Inject constructor(
     fun onTtsSentenceTextReceived(text: String) {
         if (!_state.value.isTtsPlaying) return
         lastSpokenEnglishText = text
-        ttsManager.speak(text, _state.value.leftSentenceIndex)
+        val mode = _state.value.ttsBilingualMode
+
+        when (mode) {
+            TtsBilingualMode.OFF -> {
+                ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+            }
+            TtsBilingualMode.EN_TO_ES -> {
+                // Phase 0: speak English first
+                bilingualPhase = 0
+                ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+            }
+            TtsBilingualMode.ES_TO_EN -> {
+                // Phase 0: translate and speak Spanish first, then English
+                bilingualPhase = 0
+                isBilingualPendingTranslation = true
+                viewModelScope.launch {
+                    try {
+                        val translated = translationManager.translate(text)
+                        Log.d("TtsBilingual", "ES→EN: Speaking Spanish first: '$translated'")
+                        ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
+                    } catch (e: Exception) {
+                        Log.e("TtsBilingual", "Translation failed", e)
+                        isBilingualPendingTranslation = false
+                        ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+                    }
+                }
+            }
+            TtsBilingualMode.EN_ES_EN -> {
+                // Phase 0: speak English first
+                bilingualPhase = 0
+                ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+            }
+        }
     }
 
     private fun onTtsSentenceComplete(utteranceId: String?) {
         viewModelScope.launch {
             if (!_state.value.isTtsPlaying) return@launch
 
-            // Bilingual mode: after English, translate and speak Spanish
-            if (_state.value.isBilingualTtsMode && !isBilingualPendingTranslation && utteranceId?.startsWith("sentence_") == true && !utteranceId.startsWith("sentence_es_")) {
-                isBilingualPendingTranslation = true
-                val englishSentence = lastSpokenEnglishText
-                Log.d("TtsBilingual", "Translating: '$englishSentence'")
-                try {
-                    val translated = translationManager.translate(englishSentence)
-                    Log.d("TtsBilingual", "Translated: '$translated'")
-                    ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
-                } catch (e: Exception) {
-                    Log.e("TtsBilingual", "Translation failed", e)
-                    isBilingualPendingTranslation = false
+            val mode = _state.value.ttsBilingualMode
+            val isEnglishUtterance = utteranceId?.startsWith("sentence_") == true && !utteranceId.startsWith("sentence_es_")
+            val isSpanishUtterance = utteranceId?.startsWith("sentence_es_") == true
+
+            when (mode) {
+                TtsBilingualMode.OFF -> {
                     advanceToNextSentence()
                 }
-                return@launch
-            }
 
-            // Bilingual mode: after Spanish, move to next sentence
-            if (isBilingualPendingTranslation) {
-                isBilingualPendingTranslation = false
-                advanceToNextSentence()
-                return@launch
-            }
+                TtsBilingualMode.EN_TO_ES -> {
+                    if (isEnglishUtterance && bilingualPhase == 0) {
+                        // EN done → translate → speak ES
+                        bilingualPhase = 1
+                        isBilingualPendingTranslation = true
+                        val englishSentence = lastSpokenEnglishText
+                        Log.d("TtsBilingual", "EN→ES: Translating: '$englishSentence'")
+                        try {
+                            val translated = translationManager.translate(englishSentence)
+                            Log.d("TtsBilingual", "EN→ES: Translated: '$translated'")
+                            ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
+                        } catch (e: Exception) {
+                            Log.e("TtsBilingual", "EN→ES: Translation failed", e)
+                            isBilingualPendingTranslation = false
+                            bilingualPhase = 0
+                            advanceToNextSentence()
+                        }
+                    } else if (isSpanishUtterance && bilingualPhase == 1) {
+                        // ES done → next sentence
+                        bilingualPhase = 0
+                        isBilingualPendingTranslation = false
+                        advanceToNextSentence()
+                    }
+                }
 
-            // Normal mode
-            advanceToNextSentence()
+                TtsBilingualMode.ES_TO_EN -> {
+                    if (isSpanishUtterance && bilingualPhase == 0) {
+                        // ES done → speak English original
+                        bilingualPhase = 1
+                        isBilingualPendingTranslation = false
+                        Log.d("TtsBilingual", "ES→EN: Speaking English: '$lastSpokenEnglishText'")
+                        ttsManager.speak(lastSpokenEnglishText, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+                    } else if (isEnglishUtterance && bilingualPhase == 1) {
+                        // EN done → next sentence
+                        bilingualPhase = 0
+                        advanceToNextSentence()
+                    }
+                }
+
+                TtsBilingualMode.EN_ES_EN -> {
+                    if (isEnglishUtterance && bilingualPhase == 0) {
+                        // EN done → translate → speak ES
+                        bilingualPhase = 1
+                        isBilingualPendingTranslation = true
+                        val englishSentence = lastSpokenEnglishText
+                        Log.d("TtsBilingual", "EN↔ES: Translating: '$englishSentence'")
+                        try {
+                            val translated = translationManager.translate(englishSentence)
+                            Log.d("TtsBilingual", "EN↔ES: Translated: '$translated'")
+                            ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
+                        } catch (e: Exception) {
+                            Log.e("TtsBilingual", "EN↔ES: Translation failed", e)
+                            isBilingualPendingTranslation = false
+                            bilingualPhase = 0
+                            advanceToNextSentence()
+                        }
+                    } else if (isSpanishUtterance && bilingualPhase == 1) {
+                        // ES done → speak EN again for reinforcement
+                        bilingualPhase = 2
+                        isBilingualPendingTranslation = false
+                        Log.d("TtsBilingual", "EN↔ES: Repeating English: '$lastSpokenEnglishText'")
+                        ttsManager.speak(lastSpokenEnglishText, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+                    } else if (isEnglishUtterance && bilingualPhase == 2) {
+                        // EN repeat done → next sentence
+                        bilingualPhase = 0
+                        advanceToNextSentence()
+                    }
+                }
+            }
         }
     }
 
@@ -506,10 +594,18 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun toggleBilingualTtsMode() {
-        val newMode = !_state.value.isBilingualTtsMode
-        _state.update { it.copy(isBilingualTtsMode = newMode) }
+        val newMode = TtsBilingualMode.next(_state.value.ttsBilingualMode)
+        _state.update { it.copy(ttsBilingualMode = newMode) }
         isBilingualPendingTranslation = false
-        Log.d("TtsBilingual", "Bilingual TTS mode: $newMode")
+        bilingualPhase = 0
+        Log.d("TtsBilingual", "TTS bilingual mode: ${newMode.label}")
+    }
+
+    fun cycleTtsSpeed() {
+        val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f)
+        val current = _state.value.ttsSpeed
+        val nextIndex = (speeds.indexOf(current) + 1) % speeds.size
+        _state.update { it.copy(ttsSpeed = speeds[nextIndex]) }
     }
 
     private fun advanceTtsParagraph() {

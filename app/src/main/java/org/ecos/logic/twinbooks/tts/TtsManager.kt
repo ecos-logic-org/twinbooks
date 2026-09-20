@@ -50,13 +50,14 @@ class TtsManager @Inject constructor(
         }
     }
 
-    fun speak(text: String, sentenceIndex: Int): Boolean {
+    fun speak(text: String, sentenceIndex: Int, speed: Float = 1.0f): Boolean {
         if (!isInitialized || tts == null) {
             init()
             return false
         }
         return try {
             tts?.setLanguage(Locale.US)
+            tts?.setSpeechRate(speed)
             val params = android.os.Bundle()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "sentence_$sentenceIndex") == TextToSpeech.SUCCESS
         } catch (e: Exception) {
@@ -78,6 +79,7 @@ class TtsManager @Inject constructor(
             if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.w("TtsManager", "Spanish not available, using default locale")
             }
+            tts?.setSpeechRate(1.0f)
             val params = android.os.Bundle()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "sentence_es_$sentenceIndex") == TextToSpeech.SUCCESS
         } catch (e: Exception) {

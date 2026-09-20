@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
+import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 
 @Composable
 fun ReaderScreen(
@@ -395,8 +397,10 @@ fun ReaderScreen(
         onDecreaseFontSize = { viewModel.decreaseFontSize() },
         ttsTimeLimitMinutes = state.ttsTimeLimitMinutes,
         onCycleTtsTimeLimit = { viewModel.cycleTtsTimeLimit() },
-        isBilingualTtsMode = state.isBilingualTtsMode,
-        onToggleBilingualTtsMode = { viewModel.toggleBilingualTtsMode() },
+        ttsSpeed = state.ttsSpeed,
+        onCycleTtsSpeed = { viewModel.cycleTtsSpeed() },
+        ttsBilingualMode = state.ttsBilingualMode,
+        onCycleBilingualTtsMode = { viewModel.toggleBilingualTtsMode() },
         onResetBooks = { showResetDialog = true },
         onToggleBottomBar = { viewModel.toggleBottomBarVisibility() }
     )
@@ -474,8 +478,10 @@ private fun BottomBar(
     onDecreaseFontSize: () -> Unit,
     ttsTimeLimitMinutes: Int,
     onCycleTtsTimeLimit: () -> Unit,
-    isBilingualTtsMode: Boolean,
-    onToggleBilingualTtsMode: () -> Unit,
+    ttsSpeed: Float,
+    onCycleTtsSpeed: () -> Unit,
+    ttsBilingualMode: TtsBilingualMode,
+    onCycleBilingualTtsMode: () -> Unit,
     onResetBooks: () -> Unit,
     onToggleBottomBar: () -> Unit
 ) {
@@ -578,27 +584,67 @@ private fun BottomBar(
                                 fontSize = 10.sp
                             )
                         }
-                        // Bilingual TTS mode toggle
+                        // Bilingual TTS mode toggle (wider, with flags)
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
+                                .height(28.dp)
+                                .width(68.dp)
                                 .background(
-                                    if (isBilingualTtsMode) Color(0xFF4A148C) else Color(0xFF2A2A2A),
+                                    if (ttsBilingualMode != TtsBilingualMode.OFF) Color(0xFF4A148C) else Color(0xFF2A2A2A),
                                     RoundedCornerShape(4.dp)
                                 )
                                 .border(
                                     1.dp,
-                                    if (isBilingualTtsMode) Color(0xFFAB47BC) else Color(0xFF555555),
+                                    if (ttsBilingualMode != TtsBilingualMode.OFF) Color(0xFFAB47BC) else Color(0xFF555555),
                                     RoundedCornerShape(4.dp)
                                 )
-                                .clickable { onToggleBilingualTtsMode() },
+                                .clickable { onCycleBilingualTtsMode() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                val isActive = ttsBilingualMode != TtsBilingualMode.OFF
+                                val alpha = if (isActive) 1f else 0.4f
+                                Text(
+                                    text = "\uD83C\uDDEC\uD83C\uDDE7", // 🇬🇧
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                                )
+                                Text(
+                                    text = when (ttsBilingualMode) {
+                                        TtsBilingualMode.OFF -> ""
+                                        TtsBilingualMode.EN_TO_ES -> "\u2192" // →
+                                        TtsBilingualMode.ES_TO_EN -> "\u2190" // ←
+                                        TtsBilingualMode.EN_ES_EN -> "\u21C4" // ⇄
+                                    },
+                                    color = if (isActive) Color(0xFFCE93D8) else Color(0xFF555555),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 1.dp)
+                                )
+                                Text(
+                                    text = "\uD83C\uDDEA\uD83C\uDDF8", // 🇪🇸
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        // TTS speed (English only)
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
+                                .clickable { onCycleTtsSpeed() },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "B",
-                                color = if (isBilingualTtsMode) Color(0xFFCE93D8) else Color(0xFFB0B0B0),
-                                fontSize = 12.sp,
-                                fontWeight = if (isBilingualTtsMode) FontWeight.Bold else FontWeight.Normal
+                                text = "${ttsSpeed}x",
+                                color = Color(0xFFB0B0B0),
+                                fontSize = 9.sp
                             )
                         }
                     }
