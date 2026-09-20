@@ -329,8 +329,20 @@ private fun ChapterWebView(
 
                 if (index < 0 || index >= sentences.length) return sentences.length;
 
-                var start = 0;
-                for (var i = 0; i < index; i++) start += sentences[i].length;
+                // Find the real start position by searching for each sentence in the text
+                var searchFrom = 0;
+                var start = -1;
+                for (var i = 0; i <= index; i++) {
+                    var pos = text.indexOf(sentences[i], searchFrom);
+                    if (pos === -1) {
+                        // Fallback: try trimmed version
+                        pos = text.indexOf(sentences[i].trim(), searchFrom);
+                    }
+                    if (i === index) {
+                        start = pos !== -1 ? pos : searchFrom;
+                    }
+                    searchFrom = pos !== -1 ? pos + sentences[i].length : searchFrom + sentences[i].length;
+                }
                 var end = start + sentences[index].length;
 
                 var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
