@@ -80,6 +80,11 @@ class ReaderViewModel @Inject constructor(
                             leftBook = book,
                             leftBookUri = uri.toString(),
                             leftPosition = position,
+                            ttsTimeLimitMinutes = existingSession?.ttsTimeLimitMinutes ?: it.ttsTimeLimitMinutes,
+                            ttsBilingualMode = try {
+                                TtsBilingualMode.valueOf(existingSession?.ttsBilingualMode ?: "OFF")
+                            } catch (_: Exception) { it.ttsBilingualMode },
+                            ttsSpeed = existingSession?.ttsSpeed ?: it.ttsSpeed,
                             isLoading = false
                         )
                     }
@@ -457,6 +462,7 @@ class ReaderViewModel @Inject constructor(
         if (next > 0 && _state.value.isTtsPlaying) {
             startTtsTimer()
         }
+        saveCurrentSession()
     }
 
     fun onTtsSentenceTextReceived(text: String) {
@@ -599,6 +605,7 @@ class ReaderViewModel @Inject constructor(
         isBilingualPendingTranslation = false
         bilingualPhase = 0
         Log.d("TtsBilingual", "TTS bilingual mode: ${newMode.label}")
+        saveCurrentSession()
     }
 
     fun cycleTtsSpeed() {
@@ -606,6 +613,7 @@ class ReaderViewModel @Inject constructor(
         val current = _state.value.ttsSpeed
         val nextIndex = (speeds.indexOf(current) + 1) % speeds.size
         _state.update { it.copy(ttsSpeed = speeds[nextIndex]) }
+        saveCurrentSession()
     }
 
     private fun advanceTtsParagraph() {
@@ -745,6 +753,13 @@ class ReaderViewModel @Inject constructor(
                     fontSize = session.fontSize,
                     isSynchronized = session.isSynchronized,
                     syncOffset = session.syncOffset,
+                    ttsTimeLimitMinutes = session.ttsTimeLimitMinutes,
+                    ttsBilingualMode = try {
+                        TtsBilingualMode.valueOf(session.ttsBilingualMode)
+                    } catch (_: Exception) {
+                        TtsBilingualMode.OFF
+                    },
+                    ttsSpeed = session.ttsSpeed,
                     isLoading = false
                 )
             }
@@ -772,7 +787,10 @@ class ReaderViewModel @Inject constructor(
                 rightParagraphText = s.rightPosition.paragraphText,
                 fontSize = s.fontSize,
                 isSynchronized = s.isSynchronized,
-                syncOffset = s.syncOffset
+                syncOffset = s.syncOffset,
+                ttsTimeLimitMinutes = s.ttsTimeLimitMinutes,
+                ttsBilingualMode = s.ttsBilingualMode.name,
+                ttsSpeed = s.ttsSpeed
             )
             bookRepository.saveSession(session)
         }

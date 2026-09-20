@@ -23,5 +23,8 @@ data class ReadingSession(
     val rightParagraphText: String = "",
     val fontSize: Float = 12f,
     val isSynchronized: Boolean = false,
-    val syncOffset: Int = 0
+    val syncOffset: Int = 0,
+    val ttsTimeLimitMinutes: Int = 0,
+    val ttsBilingualMode: String = "OFF",
+    val ttsSpeed: Float = 1.0f
 )

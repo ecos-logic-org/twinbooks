@@ -21,5 +21,8 @@ data class ReadingSessionEntity(
     val fontSize: Float = 12f,
     val isSynchronized: Boolean = false,
     val syncOffset: Int = 0,
-    val lastOpenedTimestamp: Long = System.currentTimeMillis()
+    val lastOpenedTimestamp: Long = System.currentTimeMillis(),
+    val ttsTimeLimitMinutes: Int = 0,
+    val ttsBilingualMode: String = "OFF",
+    val ttsSpeed: Float = 1.0f
 )

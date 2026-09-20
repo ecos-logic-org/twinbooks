@@ -54,7 +54,10 @@ class BookRepositoryImpl @Inject constructor(
         rightParagraphText = rightParagraphText,
         fontSize = fontSize,
         isSynchronized = isSynchronized,
-        syncOffset = syncOffset
+        syncOffset = syncOffset,
+        ttsTimeLimitMinutes = ttsTimeLimitMinutes,
+        ttsBilingualMode = ttsBilingualMode,
+        ttsSpeed = ttsSpeed
     )
 
     private fun ReadingSession.toEntity() = ReadingSessionEntity(
@@ -73,6 +76,9 @@ class BookRepositoryImpl @Inject constructor(
         rightParagraphText = rightParagraphText,
         fontSize = fontSize,
         isSynchronized = isSynchronized,
-        syncOffset = syncOffset
+        syncOffset = syncOffset,
+        ttsTimeLimitMinutes = ttsTimeLimitMinutes,
+        ttsBilingualMode = ttsBilingualMode,
+        ttsSpeed = ttsSpeed
     )
 }
