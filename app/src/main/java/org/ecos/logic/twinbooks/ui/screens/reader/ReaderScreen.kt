@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.ViewColumn
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
@@ -169,17 +170,6 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(true, chapter)
                         },
-                        onPrevChapter = {
-                            val newChapter = (state.leftPosition.chapterIndex - 1).coerceAtLeast(0)
-                            viewModel.navigateToChapter(true, newChapter)
-                            viewModel.updateTtsSentenceIndex(0)
-                        },
-                        onNextChapter = {
-                            val newChapter = (state.leftPosition.chapterIndex + 1)
-                                .coerceAtMost((state.leftBook?.totalChapters ?: 1) - 1)
-                            viewModel.navigateToChapter(true, newChapter)
-                            viewModel.updateTtsSentenceIndex(0)
-                        },
                         isLeft = true,
                         isSynchronized = state.isSynchronized,
                         onParagraphDoubleClicked = { index ->
@@ -300,6 +290,36 @@ fun ReaderScreen(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    // Next Chapter button - advances both books
+                    val canAdvanceLeft = state.leftBook != null && 
+                        state.leftPosition.chapterIndex < (state.leftBook?.totalChapters ?: 0) - 1
+                    val canAdvanceRight = state.rightBook != null && 
+                        state.rightPosition.chapterIndex < (state.rightBook?.totalChapters ?: 0) - 1
+                    val canAdvance = canAdvanceLeft || canAdvanceRight
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .background(
+                                if (canAdvance) Color(0xFF2A2A2A) else Color(0xFF1A1A1A),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .border(
+                                1.dp,
+                                if (canAdvance) Color(0xFF555555) else Color(0xFF333333),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable(enabled = canAdvance) { viewModel.advanceBothBooksToNextChapter() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next chapter (both books)",
+                            tint = if (canAdvance) Color(0xFFB0B0B0) else Color(0xFF444444),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
@@ -335,17 +355,6 @@ fun ReaderScreen(
                         },
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(false, chapter)
-                        },
-                        onPrevChapter = {
-                            val newChapter = (state.rightPosition.chapterIndex - 1).coerceAtLeast(0)
-                            viewModel.navigateToChapter(false, newChapter)
-                            rightSentenceIndex = 0
-                        },
-                        onNextChapter = {
-                            val newChapter = (state.rightPosition.chapterIndex + 1)
-                                .coerceAtMost((state.rightBook?.totalChapters ?: 1) - 1)
-                            viewModel.navigateToChapter(false, newChapter)
-                            rightSentenceIndex = 0
                         },
                         isLeft = false,
                         isSynchronized = state.isSynchronized,

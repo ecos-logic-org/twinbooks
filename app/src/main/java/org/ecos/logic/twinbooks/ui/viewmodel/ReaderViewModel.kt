@@ -480,6 +480,14 @@ class ReaderViewModel @Inject constructor(
         val totalChapters = leftBook.totalChapters
         if (currentChapter < totalChapters - 1) {
             navigateToChapter(true, currentChapter + 1)
+            // Also advance right book if it's loaded
+            val rightBook = _state.value.rightBook
+            if (rightBook != null) {
+                val rightChapter = _state.value.rightPosition.chapterIndex
+                if (rightChapter < rightBook.totalChapters - 1) {
+                    navigateToChapter(false, rightChapter + 1)
+                }
+            }
             _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
             viewModelScope.launch {
                 delay(500)
@@ -489,6 +497,40 @@ class ReaderViewModel @Inject constructor(
             }
         } else {
             stopTts()
+        }
+    }
+
+    /**
+     * Advance both books to the next chapter simultaneously.
+     * Called from the divider "Next Chapter" button.
+     */
+    fun advanceBothBooksToNextChapter() {
+        val leftBook = _state.value.leftBook ?: return
+        val leftChapter = _state.value.leftPosition.chapterIndex
+        val leftTotal = leftBook.totalChapters
+
+        val rightBook = _state.value.rightBook
+        val rightChapter = _state.value.rightPosition.chapterIndex
+        val rightTotal = rightBook?.totalChapters ?: 0
+
+        // Check if either book can advance
+        val canAdvanceLeft = leftChapter < leftTotal - 1
+        val canAdvanceRight = rightBook != null && rightChapter < rightTotal - 1
+
+        if (canAdvanceLeft) {
+            navigateToChapter(true, leftChapter + 1)
+            _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+        }
+        if (canAdvanceRight) {
+            navigateToChapter(false, rightChapter + 1)
+        }
+
+        // Refresh TTS if playing
+        if (_state.value.isTtsPlaying) {
+            viewModelScope.launch {
+                delay(500)
+                ttsRefreshTrigger++
+            }
         }
     }
 

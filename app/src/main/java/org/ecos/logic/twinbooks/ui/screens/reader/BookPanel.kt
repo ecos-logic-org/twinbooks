@@ -52,8 +52,6 @@ fun BookPanel(
     onNextSentence: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
-    onPrevChapter: () -> Unit = {},
-    onNextChapter: () -> Unit = {},
     isLeft: Boolean,
     isSynchronized: Boolean = false,
     onParagraphDoubleClicked: (Int) -> Unit = {},
@@ -124,9 +122,7 @@ fun BookPanel(
             onTocClick = { showToc = true },
             isLeftBook = isLeft,
             onPrevSentence = onPrevSentence,
-            onNextSentence = onNextSentence,
-            onPrevChapter = onPrevChapter,
-            onNextChapter = onNextChapter
+            onNextSentence = onNextSentence
         )
     }
 
@@ -716,9 +712,7 @@ private fun BottomInfoBar(
     onTocClick: () -> Unit,
     isLeftBook: Boolean = false,
     onPrevSentence: () -> Unit = {},
-    onNextSentence: () -> Unit = {},
-    onPrevChapter: () -> Unit = {},
-    onNextChapter: () -> Unit = {}
+    onNextSentence: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -756,27 +750,6 @@ private fun BottomInfoBar(
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.Center
         )
-
-        IconButton(
-            onClick = onPrevChapter,
-            enabled = chapterIndex > 0
-        ) {
-            Text(
-                text = "|<",
-                color = if (chapterIndex > 0) Color(0xFFB0B0B0) else Color(0xFF555555),
-                fontSize = 14.sp
-            )
-        }
-        IconButton(
-            onClick = onNextChapter,
-            enabled = chapterIndex < totalChapters - 1
-        ) {
-            Text(
-                text = ">|",
-                color = if (chapterIndex < totalChapters - 1) Color(0xFFB0B0B0) else Color(0xFF555555),
-                fontSize = 14.sp
-            )
-        }
 
         IconButton(onClick = onTocClick) {
             Icon(
