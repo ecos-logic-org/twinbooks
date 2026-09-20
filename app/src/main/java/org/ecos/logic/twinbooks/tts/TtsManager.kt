@@ -15,7 +15,7 @@ class TtsManager @Inject constructor(
 ) {
     private var tts: TextToSpeech? = null
     private var isInitialized = false
-    var onSentenceComplete: (() -> Unit)? = null
+    var onSentenceComplete: ((String?) -> Unit)? = null
 
     fun init() {
         if (isInitialized && tts != null) return
@@ -34,12 +34,12 @@ class TtsManager @Inject constructor(
                     override fun onStart(utteranceId: String?) {}
 
                     override fun onDone(utteranceId: String?) {
-                        onSentenceComplete?.invoke()
+                        onSentenceComplete?.invoke(utteranceId)
                     }
 
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        onSentenceComplete?.invoke()
+                        onSentenceComplete?.invoke(utteranceId)
                     }
                 })
                 isInitialized = true
@@ -56,10 +56,32 @@ class TtsManager @Inject constructor(
             return false
         }
         return try {
+            tts?.setLanguage(Locale.US)
             val params = android.os.Bundle()
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "sentence_$sentenceIndex") == TextToSpeech.SUCCESS
         } catch (e: Exception) {
             Log.e("TtsManager", "Error speaking text", e)
+            false
+        }
+    }
+
+    /**
+     * Speak text in Spanish (for bilingual TTS mode).
+     */
+    fun speakSpanish(text: String, sentenceIndex: Int): Boolean {
+        if (!isInitialized || tts == null) {
+            init()
+            return false
+        }
+        return try {
+            val langResult = tts?.setLanguage(Locale("es", "ES"))
+            if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w("TtsManager", "Spanish not available, using default locale")
+            }
+            val params = android.os.Bundle()
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "sentence_es_$sentenceIndex") == TextToSpeech.SUCCESS
+        } catch (e: Exception) {
+            Log.e("TtsManager", "Error speaking Spanish text", e)
             false
         }
     }

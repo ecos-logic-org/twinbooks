@@ -34,10 +34,12 @@ class ReaderViewModel @Inject constructor(
     private var ttsTimerJob: Job? = null
     var ttsRefreshTrigger = 0
         private set
+    private var isBilingualPendingTranslation = false
+    private var lastSpokenEnglishText = ""
 
     init {
         restoreLatestSession()
-        ttsManager.onSentenceComplete = { onTtsSentenceComplete() }
+        ttsManager.onSentenceComplete = { utteranceId -> onTtsSentenceComplete(utteranceId) }
         ttsManager.init()
         
         // Initialize translation manager in background
@@ -424,12 +426,15 @@ class ReaderViewModel @Inject constructor(
 
     private fun pauseTts() {
         ttsManager.stop()
+        isBilingualPendingTranslation = false
         _state.update { it.copy(isTtsPlaying = false) }
         ttsTimerJob?.cancel()
     }
 
     fun stopTts() {
         ttsManager.stop()
+        isBilingualPendingTranslation = false
+        lastSpokenEnglishText = ""
         _state.update { it.copy(isTtsPlaying = false, ttsRemainingSeconds = 0) }
         ttsTimerJob?.cancel()
     }
@@ -452,21 +457,59 @@ class ReaderViewModel @Inject constructor(
 
     fun onTtsSentenceTextReceived(text: String) {
         if (!_state.value.isTtsPlaying) return
+        lastSpokenEnglishText = text
         ttsManager.speak(text, _state.value.leftSentenceIndex)
     }
 
-    private fun onTtsSentenceComplete() {
+    private fun onTtsSentenceComplete(utteranceId: String?) {
         viewModelScope.launch {
             if (!_state.value.isTtsPlaying) return@launch
-            val current = _state.value.leftSentenceIndex
-            val nextIndex = current + 1
-            if (nextIndex < _state.value.leftSentenceCount) {
-                _state.update { it.copy(leftSentenceIndex = nextIndex) }
-                ttsRefreshTrigger++
-            } else {
-                advanceTtsParagraph()
+
+            // Bilingual mode: after English, translate and speak Spanish
+            if (_state.value.isBilingualTtsMode && !isBilingualPendingTranslation && utteranceId?.startsWith("sentence_") == true && !utteranceId.startsWith("sentence_es_")) {
+                isBilingualPendingTranslation = true
+                val englishSentence = lastSpokenEnglishText
+                Log.d("TtsBilingual", "Translating: '$englishSentence'")
+                try {
+                    val translated = translationManager.translate(englishSentence)
+                    Log.d("TtsBilingual", "Translated: '$translated'")
+                    ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
+                } catch (e: Exception) {
+                    Log.e("TtsBilingual", "Translation failed", e)
+                    isBilingualPendingTranslation = false
+                    advanceToNextSentence()
+                }
+                return@launch
             }
+
+            // Bilingual mode: after Spanish, move to next sentence
+            if (isBilingualPendingTranslation) {
+                isBilingualPendingTranslation = false
+                advanceToNextSentence()
+                return@launch
+            }
+
+            // Normal mode
+            advanceToNextSentence()
         }
+    }
+
+    private fun advanceToNextSentence() {
+        val current = _state.value.leftSentenceIndex
+        val nextIndex = current + 1
+        if (nextIndex < _state.value.leftSentenceCount) {
+            _state.update { it.copy(leftSentenceIndex = nextIndex) }
+            ttsRefreshTrigger++
+        } else {
+            advanceTtsParagraph()
+        }
+    }
+
+    fun toggleBilingualTtsMode() {
+        val newMode = !_state.value.isBilingualTtsMode
+        _state.update { it.copy(isBilingualTtsMode = newMode) }
+        isBilingualPendingTranslation = false
+        Log.d("TtsBilingual", "Bilingual TTS mode: $newMode")
     }
 
     private fun advanceTtsParagraph() {

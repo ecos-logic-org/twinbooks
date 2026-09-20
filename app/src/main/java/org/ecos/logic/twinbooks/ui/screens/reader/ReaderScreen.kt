@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -394,6 +395,8 @@ fun ReaderScreen(
         onDecreaseFontSize = { viewModel.decreaseFontSize() },
         ttsTimeLimitMinutes = state.ttsTimeLimitMinutes,
         onCycleTtsTimeLimit = { viewModel.cycleTtsTimeLimit() },
+        isBilingualTtsMode = state.isBilingualTtsMode,
+        onToggleBilingualTtsMode = { viewModel.toggleBilingualTtsMode() },
         onResetBooks = { showResetDialog = true },
         onToggleBottomBar = { viewModel.toggleBottomBarVisibility() }
     )
@@ -471,6 +474,8 @@ private fun BottomBar(
     onDecreaseFontSize: () -> Unit,
     ttsTimeLimitMinutes: Int,
     onCycleTtsTimeLimit: () -> Unit,
+    isBilingualTtsMode: Boolean,
+    onToggleBilingualTtsMode: () -> Unit,
     onResetBooks: () -> Unit,
     onToggleBottomBar: () -> Unit
 ) {
@@ -547,20 +552,56 @@ private fun BottomBar(
                     }
                 }
 
-                // TTS max time limit (center)
+                // TTS controls group (time limit + bilingual)
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
-                        .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
-                        .clickable { onCycleTtsTimeLimit() },
-                    contentAlignment = Alignment.Center
+                        .background(Color(0xFF232323), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF444444), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    Text(
-                        text = if (ttsTimeLimitMinutes > 0) "${ttsTimeLimitMinutes}'" else "∞",
-                        color = if (ttsTimeLimitMinutes > 0) Color(0xFF4FC3F7) else Color(0xFFB0B0B0),
-                        fontSize = 11.sp
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // TTS max time limit
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF2A2A2A), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
+                                .clickable { onCycleTtsTimeLimit() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (ttsTimeLimitMinutes > 0) "${ttsTimeLimitMinutes}'" else "∞",
+                                color = if (ttsTimeLimitMinutes > 0) Color(0xFF4FC3F7) else Color(0xFFB0B0B0),
+                                fontSize = 10.sp
+                            )
+                        }
+                        // Bilingual TTS mode toggle
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(
+                                    if (isBilingualTtsMode) Color(0xFF4A148C) else Color(0xFF2A2A2A),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isBilingualTtsMode) Color(0xFFAB47BC) else Color(0xFF555555),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .clickable { onToggleBilingualTtsMode() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "B",
+                                color = if (isBilingualTtsMode) Color(0xFFCE93D8) else Color(0xFFB0B0B0),
+                                fontSize = 12.sp,
+                                fontWeight = if (isBilingualTtsMode) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
                 }
 
                 // Close bar button - FAR RIGHT with grayish background
