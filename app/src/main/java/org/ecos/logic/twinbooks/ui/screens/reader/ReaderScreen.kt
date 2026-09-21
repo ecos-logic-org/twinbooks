@@ -28,10 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.ViewColumn
@@ -175,7 +172,6 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(true, chapter)
                         },
-                        isLeft = true,
                         isSynchronized = state.isSynchronized,
                         onParagraphDoubleClicked = { index ->
                             viewModel.onLeftParagraphDoubleClicked(index)
@@ -361,7 +357,6 @@ fun ReaderScreen(
                         onChapterSelected = { chapter ->
                             viewModel.navigateToChapter(false, chapter)
                         },
-                        isLeft = false,
                         isSynchronized = state.isSynchronized,
                         onParagraphDoubleClicked = { index ->
                             viewModel.onRightParagraphDoubleClicked(index)

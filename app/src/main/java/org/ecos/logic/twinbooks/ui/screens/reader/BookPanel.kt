@@ -9,14 +9,15 @@ import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
@@ -41,7 +42,6 @@ import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 
 internal const val READING_ZONE_Y_DP = 80f
-private const val PARAGRAPH_TEXT_MAX_LENGTH = 100
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -55,12 +55,10 @@ fun BookPanel(
     onNextSentence: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
-    isLeft: Boolean,
     isSynchronized: Boolean = false,
     onParagraphDoubleClicked: (Int) -> Unit = {},
     onParagraphIndexChanged: (Int) -> Unit = {},
     scrollToParagraphIndex: Int? = null,
-    syncSourceText: String? = null,
     onSentenceTextFound: (String) -> Unit = {},
     onReachedEndOfChapter: () -> Unit = {},
     ttsRefreshTrigger: Int = 0,
@@ -118,12 +116,10 @@ fun BookPanel(
 
         // Bottom bar with chapter info, progress, and TOC button
         BottomInfoBar(
-            chapterTitle = currentChapter?.title ?: "",
             chapterIndex = position.chapterIndex,
             totalChapters = book.totalChapters,
             progressPercent = position.progressPercent,
             onTocClick = { showToc = true },
-            isLeftBook = isLeft,
             onPrevSentence = onPrevSentence,
             onNextSentence = onNextSentence
         )
@@ -175,7 +171,7 @@ private fun ChapterWebView(
     val currentOnReachedEndOfChapter = remember { mutableStateOf(onReachedEndOfChapter) }
     currentOnReachedEndOfChapter.value = onReachedEndOfChapter
     var lastAppliedSentenceIndex by remember { mutableIntStateOf(-1) }
-    var lastAppliedFontSize by remember { mutableStateOf(fontSize) }
+    var lastAppliedFontSize by remember { mutableIntStateOf(fontSize) }
     var lastAppliedScrollToIndex by remember { mutableStateOf<Int?>(null) }
     var lastAppliedSyncedState by remember { mutableStateOf(isSynchronized) }
     var lastAppliedTtsRefresh by remember { mutableIntStateOf(0) }
@@ -536,6 +532,7 @@ private fun ChapterWebView(
         </html>
     """.trimIndent()
 
+    @Suppress("unused")
     AndroidView(
         factory = { context ->
             val jsInterface = object : Any() {
@@ -607,7 +604,10 @@ private fun ChapterWebView(
                                     val found = result?.contains("true") == true
                                     if (!found) {
                                         v.postDelayed({
-                                            v.evaluateJavascript("window.scrollTo(0, $scrollOffset);", null)
+                                            v.evaluateJavascript(
+                                                "window.scrollTo(0, $scrollOffset);",
+                                                null
+                                            )
                                         }, 100)
                                     }
                                 }
@@ -706,14 +706,13 @@ private fun ReadingIndicatorBar(
     }
 }
 
+@SuppressLint("DefaultLocale")
 @Composable
 private fun BottomInfoBar(
-    chapterTitle: String,
     chapterIndex: Int,
     totalChapters: Int,
     progressPercent: Float,
     onTocClick: () -> Unit,
-    isLeftBook: Boolean = false,
     onPrevSentence: () -> Unit = {},
     onNextSentence: () -> Unit = {}
 ) {
@@ -733,11 +732,15 @@ private fun BottomInfoBar(
 
         Box(
             modifier = Modifier
-                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
-                .background(Color(0xFF2A2A2A))
-                .size(36.dp)
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                .background(Color(0x5500FF00), RoundedCornerShape(8.dp))
+                .width(72.dp)
+                .height(36.dp),
         ) {
-            IconButton(onClick = onPrevSentence) {
+            IconButton(
+                onClick = onPrevSentence,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
                     contentDescription = "Previous sentence",
@@ -745,13 +748,18 @@ private fun BottomInfoBar(
                 )
             }
         }
+        Spacer(modifier = Modifier.width(24.dp))
         Box(
             modifier = Modifier
-                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
-                .background(Color(0xFF2A2A2A))
-                .size(36.dp)
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                .background(Color(0x5500FF00), RoundedCornerShape(8.dp))
+                .width(72.dp)
+                .height(36.dp)
         ) {
-            IconButton(onClick = onNextSentence) {
+            IconButton(
+                onClick = onNextSentence,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                     contentDescription = "Next sentence",
