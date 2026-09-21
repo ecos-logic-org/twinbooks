@@ -7,7 +7,10 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -728,19 +731,33 @@ private fun BottomInfoBar(
             modifier = Modifier.weight(1f)
         )
 
-        IconButton(onClick = onPrevSentence) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
-                contentDescription = "Previous sentence",
-                tint = Color(0xFFB0B0B0)
-            )
+        Box(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
+                .background(Color(0xFF2A2A2A))
+                .size(36.dp)
+        ) {
+            IconButton(onClick = onPrevSentence) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
+                    contentDescription = "Previous sentence",
+                    tint = Color(0xFFB0B0B0)
+                )
+            }
         }
-        IconButton(onClick = onNextSentence) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                contentDescription = "Next sentence",
-                tint = Color(0xFFB0B0B0)
-            )
+        Box(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(4.dp))
+                .background(Color(0xFF2A2A2A))
+                .size(36.dp)
+        ) {
+            IconButton(onClick = onNextSentence) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                    contentDescription = "Next sentence",
+                    tint = Color(0xFFB0B0B0)
+                )
+            }
         }
 
         Text(
