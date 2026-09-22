@@ -418,6 +418,59 @@ class ReaderViewModel @Inject constructor(
             .toList()
     }
 
+    /**
+     * Extract sentences from text using compromise.js-like logic (simple regex fallback)
+     */
+    private fun extractSentences(text: String): List<String> {
+        // Simple sentence splitting - in production this should use the same logic as compromise.js
+        return text.split(Regex("(?<=[.!?])\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+    }
+
+    /**
+     * Find the best matching Spanish sentence from the synchronized right paragraph
+     * @param englishSentence The English sentence being spoken
+     * @return The matching Spanish sentence, or null if not found
+     */
+    private suspend fun findMatchingSpanishSentence(englishSentence: String): String? {
+        val currentState = _state.value
+        val rightBook = currentState.rightBook ?: return null
+        val rightChapter = rightBook.chapters.getOrNull(currentState.rightPosition.chapterIndex) ?: return null
+        
+        // Get the synchronized right paragraph index
+        val rightParaIndex = currentState.rightParagraphIndex
+        if (rightParaIndex < 0) return null
+        
+        // Extract paragraphs from right chapter
+        val rightParagraphs = extractParagraphs(rightChapter.htmlContent)
+        if (rightParaIndex >= rightParagraphs.size) return null
+        
+        // Get the Spanish paragraph text
+        val spanishParagraph = rightParagraphs[rightParaIndex]
+        
+        // Extract sentences from the Spanish paragraph
+        val spanishSentences = extractSentences(spanishParagraph)
+        if (spanishSentences.isEmpty()) return null
+        
+        // If only one sentence, return it
+        if (spanishSentences.size == 1) return spanishSentences[0]
+        
+        // Use translation manager to find best match (it uses semantic similarity)
+        val bestIndex = translationManager.findBestMatch(
+            sourceText = englishSentence,
+            candidates = spanishSentences,
+            startIndex = 0,
+            range = spanishSentences.size
+        )
+        return if (bestIndex >= 0 && bestIndex < spanishSentences.size) {
+            spanishSentences[bestIndex]
+        } else {
+            spanishSentences[0] // fallback to first sentence
+        }
+    }
+
     // --- TTS Methods ---
 
     fun toggleTts() {
@@ -518,16 +571,19 @@ class ReaderViewModel @Inject constructor(
                 ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
             }
             TtsBilingualMode.ES_TO_EN -> {
-                // Phase 0: translate and speak Spanish first, then English
+                // Phase 0: speak Spanish from right book first, then English
                 bilingualPhase = 0
                 isBilingualPendingTranslation = true
                 viewModelScope.launch {
                     try {
-                        val translated = translationManager.translate(text)
-                        Log.d("TtsBilingual", "ES→EN: Speaking Spanish first: '$translated'")
-                        ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
+                        val spanishSentence = findMatchingSpanishSentence(text) ?: run {
+                            Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
+                            translationManager.translate(text)
+                        }
+                        Log.d("TtsBilingual", "ES→EN: Speaking Spanish from right book: '$spanishSentence'")
+                        ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
                     } catch (e: Exception) {
-                        Log.e("TtsBilingual", "Translation failed", e)
+                        Log.e("TtsBilingual", "Failed to get Spanish sentence", e)
                         isBilingualPendingTranslation = false
                         ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
                     }
@@ -556,20 +612,25 @@ class ReaderViewModel @Inject constructor(
 
                 TtsBilingualMode.EN_TO_ES -> {
                     if (isEnglishUtterance && bilingualPhase == 0) {
-                        // EN done → translate → speak ES
+                        // EN done → find matching Spanish sentence from right book → speak ES
                         bilingualPhase = 1
                         isBilingualPendingTranslation = true
                         val englishSentence = lastSpokenEnglishText
-                        Log.d("TtsBilingual", "EN→ES: Translating: '$englishSentence'")
-                        try {
-                            val translated = translationManager.translate(englishSentence)
-                            Log.d("TtsBilingual", "EN→ES: Translated: '$translated'")
-                            ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
-                        } catch (e: Exception) {
-                            Log.e("TtsBilingual", "EN→ES: Translation failed", e)
-                            isBilingualPendingTranslation = false
-                            bilingualPhase = 0
-                            advanceToNextSentence()
+                        Log.d("TtsBilingual", "EN→ES: Finding Spanish sentence for: '$englishSentence'")
+                        viewModelScope.launch {
+                            try {
+                                val spanishSentence = findMatchingSpanishSentence(englishSentence) ?: run {
+                                    Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
+                                    translationManager.translate(englishSentence)
+                                }
+                                Log.d("TtsBilingual", "EN→ES: Spanish sentence: '$spanishSentence'")
+                                ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
+                            } catch (e: Exception) {
+                                Log.e("TtsBilingual", "EN→ES: Failed to get Spanish sentence", e)
+                                isBilingualPendingTranslation = false
+                                bilingualPhase = 0
+                                advanceToNextSentence()
+                            }
                         }
                     } else if (isSpanishUtterance && bilingualPhase == 1) {
                         // ES done → next sentence
@@ -590,25 +651,49 @@ class ReaderViewModel @Inject constructor(
                         // EN done → next sentence
                         bilingualPhase = 0
                         advanceToNextSentence()
+                    } else if (bilingualPhase == 0 && isEnglishUtterance == false && isSpanishUtterance == false) {
+                        // Phase 0: speak Spanish first (from right book)
+                        val englishSentence = lastSpokenEnglishText
+                        Log.d("TtsBilingual", "ES→EN: Finding Spanish sentence for: '$englishSentence'")
+                        viewModelScope.launch {
+                            try {
+                                val spanishSentence = findMatchingSpanishSentence(englishSentence) ?: run {
+                                    Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
+                                    translationManager.translate(englishSentence)
+                                }
+                                Log.d("TtsBilingual", "ES→EN: Spanish sentence: '$spanishSentence'")
+                                ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
+                                bilingualPhase = 1 // Next will be English
+                            } catch (e: Exception) {
+                                Log.e("TtsBilingual", "ES→EN: Failed to get Spanish sentence", e)
+                                ttsManager.speak(englishSentence, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+                                bilingualPhase = 1
+                            }
+                        }
                     }
                 }
 
                 TtsBilingualMode.EN_ES_EN -> {
                     if (isEnglishUtterance && bilingualPhase == 0) {
-                        // EN done → translate → speak ES
+                        // EN done → find matching Spanish sentence from right book → speak ES
                         bilingualPhase = 1
                         isBilingualPendingTranslation = true
                         val englishSentence = lastSpokenEnglishText
-                        Log.d("TtsBilingual", "EN↔ES: Translating: '$englishSentence'")
-                        try {
-                            val translated = translationManager.translate(englishSentence)
-                            Log.d("TtsBilingual", "EN↔ES: Translated: '$translated'")
-                            ttsManager.speakSpanish(translated, _state.value.leftSentenceIndex)
-                        } catch (e: Exception) {
-                            Log.e("TtsBilingual", "EN↔ES: Translation failed", e)
-                            isBilingualPendingTranslation = false
-                            bilingualPhase = 0
-                            advanceToNextSentence()
+                        Log.d("TtsBilingual", "EN↔ES: Finding Spanish sentence for: '$englishSentence'")
+                        viewModelScope.launch {
+                            try {
+                                val spanishSentence = findMatchingSpanishSentence(englishSentence) ?: run {
+                                    Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
+                                    translationManager.translate(englishSentence)
+                                }
+                                Log.d("TtsBilingual", "EN↔ES: Spanish sentence: '$spanishSentence'")
+                                ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
+                            } catch (e: Exception) {
+                                Log.e("TtsBilingual", "EN↔ES: Failed to get Spanish sentence", e)
+                                isBilingualPendingTranslation = false
+                                bilingualPhase = 0
+                                advanceToNextSentence()
+                            }
                         }
                     } else if (isSpanishUtterance && bilingualPhase == 1) {
                         // ES done → speak EN again for reinforcement
