@@ -278,21 +278,26 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun updateRightParagraphIndex(index: Int) {
+    fun updateRightParagraphIndex(index: Int, isManualScroll: Boolean = false) {
         val currentState = _state.value
         if (currentState.isSynchronized) {
             val leftIndex = currentState.leftParagraphIndex
             if (leftIndex >= 0) {
-                // Always update anchor to reflect current state
-                // This ensures the anchor is always correct regardless of who scrolled
-                _state.update {
-                    it.copy(
-                        rightParagraphIndex = index,
-                        syncAnchorLeftIndex = leftIndex,
-                        syncAnchorRightIndex = index
-                    )
+                // Only update anchor when user manually scrolls right book
+                // Programmatic sync from left book should NOT update anchor
+                if (isManualScroll) {
+                    _state.update {
+                        it.copy(
+                            rightParagraphIndex = index,
+                            syncAnchorLeftIndex = leftIndex,
+                            syncAnchorRightIndex = index
+                        )
+                    }
+                    Log.d("SyncTranslation", "Anchor updated (manual): Left=$leftIndex → Right=$index (offset=${index - leftIndex})")
+                } else {
+                    _state.update { it.copy(rightParagraphIndex = index) }
+                    Log.d("SyncTranslation", "Right paragraph index updated (sync): Right=$index, anchor unchanged")
                 }
-                Log.d("SyncTranslation", "Anchor updated: Left=$leftIndex → Right=$index (offset=${index - leftIndex})")
                 saveCurrentSession()
                 return
             }

@@ -50,6 +50,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlin.text.Regex
+import kotlin.text.RegexOption
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 
@@ -71,11 +77,15 @@ fun ReaderScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
 
     var rightSentenceIndex by remember { mutableIntStateOf(-1) }
     var rightSentenceCount by remember { mutableIntStateOf(0) }
     var rightOffset by remember { mutableIntStateOf(0) }
+    var rightParagraphIndex by remember { mutableIntStateOf(-1) }
     var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
+    var scrollToLeftIndex by remember { mutableStateOf<Int?>(null) }
+    var isSyncScrollingRight by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
@@ -86,7 +96,23 @@ fun ReaderScreen(
 
     LaunchedEffect(scrollToRightIndex) {
         if (scrollToRightIndex != null) {
+            isSyncScrollingRight = true
+            val targetIndex = scrollToRightIndex
             scrollToRightIndex = null
+            // Wait for the programmatic scroll to complete before allowing anchor updates
+            // The WebView scroll + JS callback takes some time
+            coroutineScope.launch {
+                delay(500)
+                if (rightParagraphIndex == targetIndex) {
+                    isSyncScrollingRight = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(scrollToLeftIndex) {
+        if (scrollToLeftIndex != null) {
+            scrollToLeftIndex = null
         }
     }
 
@@ -166,6 +192,46 @@ fun ReaderScreen(
                             rightSentenceIndex = (newIndex + rightOffset)
                                 .coerceAtMost((rightSentenceCount - 1).coerceAtLeast(0))
                         },
+                        onPrevParagraph = {
+                            // Navigate left book to previous paragraph
+                            val leftParaIndex = state.leftParagraphIndex
+                            if (leftParaIndex > 0) {
+                                val newIndex = leftParaIndex - 1
+                                viewModel.updateLeftParagraphIndex(newIndex)
+                                scrollToLeftIndex = newIndex
+                            }
+                            // Also navigate right book if synchronized
+                            if (state.isSynchronized && rightParagraphIndex > 0) {
+                                rightParagraphIndex -= 1
+                                viewModel.updateRightParagraphIndex(rightParagraphIndex, isManualScroll = false)
+                                scrollToRightIndex = rightParagraphIndex
+                            }
+                        },
+                        onNextParagraph = {
+                            // Navigate left book to next paragraph
+                            val leftParaIndex = state.leftParagraphIndex
+                            val leftChapter = state.leftBook?.chapters?.getOrNull(state.leftPosition.chapterIndex)
+                            val leftTotalParagraphs = leftChapter?.htmlContent?.let { 
+                                Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count() 
+                            } ?: 1
+                            if (leftParaIndex < leftTotalParagraphs - 1) {
+                                val newIndex = leftParaIndex + 1
+                                viewModel.updateLeftParagraphIndex(newIndex)
+                                scrollToLeftIndex = newIndex
+                            }
+                            // Also navigate right book if synchronized
+                            if (state.isSynchronized) {
+                                val rightChapter = state.rightBook?.chapters?.getOrNull(state.rightPosition.chapterIndex)
+                                val rightTotalParagraphs = rightChapter?.htmlContent?.let { 
+                                    Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count() 
+                                } ?: 1
+                                if (rightParagraphIndex < rightTotalParagraphs - 1) {
+                                    rightParagraphIndex += 1
+                                    viewModel.updateRightParagraphIndex(rightParagraphIndex, isManualScroll = false)
+                                    scrollToRightIndex = rightParagraphIndex
+                                }
+                            }
+                        },
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateLeftPosition(chapter, offset, paragraphText)
                         },
@@ -188,6 +254,7 @@ fun ReaderScreen(
                                 )
                             }
                         },
+                        scrollToParagraphIndex = scrollToLeftIndex,
                         ttsRefreshTrigger = viewModel.ttsRefreshTrigger,
                         ttsScrollToNextParagraphTrigger = state.ttsScrollToNextParagraphTrigger,
                         onReachedEndOfChapter = {
@@ -351,6 +418,26 @@ fun ReaderScreen(
                                 (rightSentenceCount - 1).coerceAtLeast(0)
                             )
                         },
+                        onPrevParagraph = {
+                            // Only navigate right book to previous paragraph
+                            if (rightParagraphIndex > 0) {
+                                rightParagraphIndex -= 1
+                                viewModel.updateRightParagraphIndex(rightParagraphIndex)
+                                scrollToRightIndex = rightParagraphIndex
+                            }
+                        },
+                        onNextParagraph = {
+                            // Only navigate right book to next paragraph
+                            val rightChapter = state.rightBook?.chapters?.getOrNull(state.rightPosition.chapterIndex)
+                            val rightTotalParagraphs = rightChapter?.htmlContent?.let {
+                                Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count()
+                            } ?: 1
+                            if (rightParagraphIndex < rightTotalParagraphs - 1) {
+                                rightParagraphIndex += 1
+                                viewModel.updateRightParagraphIndex(rightParagraphIndex)
+                                scrollToRightIndex = rightParagraphIndex
+                            }
+                        },
                         onPositionChanged = { chapter, offset, paragraphText ->
                             viewModel.updateRightPosition(chapter, offset, paragraphText)
                         },
@@ -362,7 +449,13 @@ fun ReaderScreen(
                             viewModel.onRightParagraphDoubleClicked(index)
                         },
                         onParagraphIndexChanged = { index ->
-                            viewModel.updateRightParagraphIndex(index)
+                            if (isSyncScrollingRight) {
+                                // Suppress anchor update during programmatic sync scroll
+                                viewModel.updateRightParagraphIndex(index, isManualScroll = false)
+                            } else {
+                                viewModel.updateRightParagraphIndex(index, isManualScroll = true)
+                            }
+                            rightParagraphIndex = index
                         },
                         scrollToParagraphIndex = scrollToRightIndex
                     )

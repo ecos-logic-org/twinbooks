@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,6 +62,8 @@ fun BookPanel(
     onSentenceCountChanged: (Int) -> Unit = {},
     onPrevSentence: () -> Unit = {},
     onNextSentence: () -> Unit = {},
+    onPrevParagraph: () -> Unit = {},
+    onNextParagraph: () -> Unit = {},
     onPositionChanged: (chapterIndex: Int, scrollOffset: Int, paragraphText: String) -> Unit,
     onChapterSelected: (Int) -> Unit,
     isSynchronized: Boolean = false,
@@ -129,7 +132,9 @@ fun BookPanel(
             progressPercent = position.progressPercent,
             onTocClick = { showToc = true },
             onPrevSentence = onPrevSentence,
-            onNextSentence = onNextSentence
+            onNextSentence = onNextSentence,
+            onPrevParagraph = onPrevParagraph,
+            onNextParagraph = onNextParagraph
         )
     }
 
@@ -263,7 +268,30 @@ private fun ChapterWebView(
                 for (var i = 0; i < elements.length; i++) {
                     var elText = elements[i].textContent.trim();
                     if (elText.substring(0, 100) === text.substring(0, 100)) {
-                        elements[i].scrollIntoView({ behavior: 'instant', block: 'start' });
+                        // Immediately highlight the target paragraph
+                        if (window.highlighted) {
+                            window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                        }
+                        window.clearSentenceHighlight();
+                        window.highlighted = elements[i];
+                        window.highlighted.classList.add('reading-zone-highlight');
+                        
+                        if (window.ParagraphBridge) {
+                            var text = window.highlighted.textContent.trim().substring(0, 100);
+                            window.ParagraphBridge.onParagraphFound(text, i);
+                            var allSentences = window.getSentences(window.highlighted.textContent);
+                            window.ParagraphBridge.onSentenceCountFound(allSentences.length);
+                            setTimeout(function() { window.highlightSentence(0); }, 50);
+                        }
+                        
+                        // Scroll so the paragraph's CENTER aligns with reading zone (80dp from top)
+                        var target = elements[i];
+                        var rect = target.getBoundingClientRect();
+                        var targetCenter = rect.top + rect.height / 2;
+                        var readingZoneY = 80;
+                        var scrollOffset = targetCenter - readingZoneY;
+                        
+                        window.scrollBy({ top: scrollOffset, behavior: 'instant' });
                         return true;
                     }
                 }
@@ -283,7 +311,35 @@ private fun ChapterWebView(
             function scrollToParagraphByIndex(index) {
                 var elements = document.querySelectorAll('p');
                 if (index < 0 || index >= elements.length) return false;
-                elements[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // Immediately highlight the target paragraph
+                if (window.highlighted) {
+                    window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                }
+                window.clearSentenceHighlight();
+                window.highlighted = elements[index];
+                window.highlighted.classList.add('reading-zone-highlight');
+                
+                if (window.ParagraphBridge) {
+                    var text = window.highlighted.textContent.trim().substring(0, 100);
+                    window.ParagraphBridge.onParagraphFound(text, index);
+                    var allSentences = window.getSentences(window.highlighted.textContent);
+                    window.ParagraphBridge.onSentenceCountFound(allSentences.length);
+                    setTimeout(function() { window.highlightSentence(0); }, 50);
+                }
+                
+                // Scroll so the paragraph's CENTER aligns with reading zone (80dp from top)
+                // This ensures small paragraphs are properly highlighted
+                var target = elements[index];
+                var rect = target.getBoundingClientRect();
+                var targetCenter = rect.top + rect.height / 2;
+                var readingZoneY = 80; // Must match READING_ZONE_Y in highlightParagraph
+                var scrollOffset = targetCenter - readingZoneY;
+                
+                window.scrollBy({ top: scrollOffset, behavior: 'smooth' });
+                
+                // Verify highlight after scroll completes
+                setTimeout(window.highlightParagraph, 350);
                 return true;
             }
 
@@ -415,7 +471,33 @@ private fun ChapterWebView(
                     next = next.nextElementSibling;
                 }
                 if (next) {
-                    next.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Immediately highlight the next paragraph
+                    if (window.highlighted) {
+                        window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                    }
+                    window.clearSentenceHighlight();
+                    window.highlighted = next;
+                    window.highlighted.classList.add('reading-zone-highlight');
+                    
+                    if (window.ParagraphBridge) {
+                        var text = window.highlighted.textContent.trim().substring(0, 100);
+                        var index = window.getParagraphIndex();
+                        window.ParagraphBridge.onParagraphFound(text, index);
+                        var allSentences = window.getSentences(window.highlighted.textContent);
+                        window.ParagraphBridge.onSentenceCountFound(allSentences.length);
+                        setTimeout(function() { window.highlightSentence(0); }, 50);
+                    }
+                    
+                    // Scroll so the paragraph's CENTER aligns with reading zone (80dp from top)
+                    var rect = next.getBoundingClientRect();
+                    var targetCenter = rect.top + rect.height / 2;
+                    var readingZoneY = 80;
+                    var scrollOffset = targetCenter - readingZoneY;
+                    
+                    window.scrollBy({ top: scrollOffset, behavior: 'smooth' });
+                    
+                    // Verify highlight after scroll completes
+                    setTimeout(window.highlightParagraph, 350);
                     return true;
                 }
                 if (window.ParagraphBridge) {
@@ -426,9 +508,10 @@ private fun ChapterWebView(
 
             (function() {
                 var READING_ZONE_Y = $readingZoneY;
-                var highlighted = null;
+                // Use global window.highlighted for cross-function access
+                window.highlighted = window.highlighted || null;
                 var highlightTimer = null;
-                var isClickScrolling = false;
+                window.isClickScrolling = window.isClickScrolling || false;
 
                 function highlightParagraph() {
                     var elements = document.querySelectorAll('p');
@@ -466,19 +549,19 @@ private fun ChapterWebView(
                         }
                     }
 
-                    if (newHighlighted && newHighlighted !== highlighted) {
-                        if (highlighted) {
-                            highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                    if (newHighlighted && newHighlighted !== window.highlighted) {
+                        if (window.highlighted) {
+                            window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
                         }
                         clearSentenceHighlight();
-                        highlighted = newHighlighted;
-                        highlighted.classList.add('reading-zone-highlight');
+                        window.highlighted = newHighlighted;
+                        window.highlighted.classList.add('reading-zone-highlight');
 
                         if (window.ParagraphBridge) {
-                            var text = highlighted.textContent.trim().substring(0, 100);
+                            var text = window.highlighted.textContent.trim().substring(0, 100);
                             var index = getParagraphIndex();
                             window.ParagraphBridge.onParagraphFound(text, index);
-                            var allSentences = getSentences(highlighted.textContent);
+                            var allSentences = getSentences(window.highlighted.textContent);
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
                             );
@@ -488,7 +571,7 @@ private fun ChapterWebView(
                 }
 
                 function debouncedHighlight() {
-                    if (isClickScrolling) return;
+                    if (window.isClickScrolling) return;
                     if (highlightTimer) clearTimeout(highlightTimer);
                     highlightTimer = setTimeout(highlightParagraph, 80);
                 }
@@ -499,12 +582,12 @@ private fun ChapterWebView(
                         e.preventDefault();
                         var clickedElement = this;
 
-                        if (highlighted) {
-                            highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
+                        if (window.highlighted) {
+                            window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
                         }
                         clearSentenceHighlight();
-                        highlighted = clickedElement;
-                        highlighted.classList.add('reading-zone-highlight');
+                        window.highlighted = clickedElement;
+                        window.highlighted.classList.add('reading-zone-highlight');
 
                         if (window.ParagraphBridge) {
                             var text = clickedElement.textContent.trim().substring(0, 100);
@@ -515,9 +598,9 @@ private fun ChapterWebView(
                             setTimeout(function() { highlightSentence(0); }, 50);
                         }
 
-                        isClickScrolling = true;
+                        window.isClickScrolling = true;
                         clickedElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        setTimeout(function() { isClickScrolling = false; }, 1500);
+                        setTimeout(function() { window.isClickScrolling = false; }, 1500);
                     });
 
                     paragraphs[i].addEventListener('dblclick', function(e) {
@@ -534,7 +617,14 @@ private fun ChapterWebView(
                 setTimeout(highlightParagraph, 300);
                 setTimeout(highlightParagraph, 600);
                 setTimeout(highlightParagraph, 1200);
-            })();
+            
+            // Expose to global scope for programmatic navigation
+            window.highlightParagraph = highlightParagraph;
+            window.clearSentenceHighlight = clearSentenceHighlight;
+            window.getSentences = getSentences;
+            window.getParagraphIndex = getParagraphIndex;
+            window.highlightSentence = highlightSentence;
+        })();
             </script>
         </body>
         </html>
@@ -722,7 +812,9 @@ private fun BottomInfoBar(
     progressPercent: Float,
     onTocClick: () -> Unit,
     onPrevSentence: () -> Unit = {},
-    onNextSentence: () -> Unit = {}
+    onNextSentence: () -> Unit = {},
+    onPrevParagraph: () -> Unit = {},
+    onNextParagraph: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier
@@ -742,7 +834,7 @@ private fun BottomInfoBar(
             modifier = Modifier
                 .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
                 .background(Color(0x5500FF00), RoundedCornerShape(8.dp))
-                .width(72.dp)
+                .width(56.dp)
                 .height(36.dp),
         ) {
             IconButton(
@@ -757,12 +849,12 @@ private fun BottomInfoBar(
                 )
             }
         }
-        Spacer(modifier = Modifier.width(24.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Box(
             modifier = Modifier
                 .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
                 .background(Color(0x5500FF00), RoundedCornerShape(8.dp))
-                .width(72.dp)
+                .width(56.dp)
                 .height(36.dp)
         ) {
             IconButton(
@@ -774,6 +866,43 @@ private fun BottomInfoBar(
                     text = "->",
                     color = Color(0xFFB0B0B0),
                     fontSize = 24.sp
+                )
+            }
+        }
+
+        // Paragraph navigation buttons
+        Spacer(modifier = Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                .size(36.dp),
+        ) {
+            IconButton(
+                onClick = onPrevParagraph,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Text(
+                    fontFamily = arrowFontFamily,
+                    text = "<|",
+                    color = Color(0xFFB0B0B0),
+                    fontSize = 20.sp
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                .size(36.dp)
+        ) {
+            IconButton(
+                onClick = onNextParagraph,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Text(
+                    fontFamily = arrowFontFamily,
+                    text = "|>",
+                    color = Color(0xFFB0B0B0),
+                    fontSize = 20.sp
                 )
             }
         }
