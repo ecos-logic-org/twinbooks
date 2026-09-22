@@ -38,6 +38,8 @@ class ReaderViewModel @Inject constructor(
     private var isBilingualPendingTranslation = false
     private var lastSpokenEnglishText = ""
     private var bilingualPhase = 0 // 0=off, tracks which phase in bilingual flow
+    private var ttsExpectedSentenceIndex = -1 // Track which sentence index we expect from TTS-driven highlight
+    private var ttsExpectedParagraphIndex = -1 // Track which paragraph we're in
 
     init {
         restoreLatestSession()
@@ -433,6 +435,8 @@ class ReaderViewModel @Inject constructor(
         if (_state.value.ttsTimeLimitMinutes > 0) {
             startTtsTimer()
         }
+        ttsExpectedSentenceIndex = _state.value.leftSentenceIndex
+        ttsExpectedParagraphIndex = _state.value.leftParagraphIndex
         ttsRefreshTrigger++
     }
 
@@ -440,6 +444,8 @@ class ReaderViewModel @Inject constructor(
         ttsManager.stop()
         isBilingualPendingTranslation = false
         bilingualPhase = 0
+        ttsExpectedSentenceIndex = -1
+        ttsExpectedParagraphIndex = -1
         _state.update { it.copy(isTtsPlaying = false) }
         ttsTimerJob?.cancel()
     }
@@ -448,6 +454,8 @@ class ReaderViewModel @Inject constructor(
         ttsManager.stop()
         isBilingualPendingTranslation = false
         bilingualPhase = 0
+        ttsExpectedSentenceIndex = -1
+        ttsExpectedParagraphIndex = -1
         lastSpokenEnglishText = ""
         _state.update { it.copy(isTtsPlaying = false, ttsRemainingSeconds = 0) }
         ttsTimerJob?.cancel()
@@ -488,6 +496,15 @@ class ReaderViewModel @Inject constructor(
 
     fun onTtsSentenceTextReceived(text: String) {
         if (!_state.value.isTtsPlaying) return
+        
+        // Ignore callbacks that don't match our expected TTS position
+        val currentSentenceIndex = _state.value.leftSentenceIndex
+        val currentParagraphIndex = _state.value.leftParagraphIndex
+        if (currentSentenceIndex != ttsExpectedSentenceIndex || currentParagraphIndex != ttsExpectedParagraphIndex) {
+            Log.d("TtsBilingual", "Ignoring spurious onTtsSentenceTextReceived: expected sentence=$ttsExpectedSentenceIndex para=$ttsExpectedParagraphIndex, got sentence=$currentSentenceIndex para=$currentParagraphIndex")
+            return
+        }
+        
         lastSpokenEnglishText = text
         val mode = _state.value.ttsBilingualMode
 
@@ -614,6 +631,8 @@ class ReaderViewModel @Inject constructor(
         val nextIndex = current + 1
         if (nextIndex < _state.value.leftSentenceCount) {
             _state.update { it.copy(leftSentenceIndex = nextIndex) }
+            ttsExpectedSentenceIndex = nextIndex
+            ttsExpectedParagraphIndex = _state.value.leftParagraphIndex
             ttsRefreshTrigger++
         } else {
             advanceTtsParagraph()
@@ -633,6 +652,8 @@ class ReaderViewModel @Inject constructor(
 
     private fun advanceTtsParagraph() {
         _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+        ttsExpectedSentenceIndex = 0
+        ttsExpectedParagraphIndex = _state.value.leftParagraphIndex + 1
         _state.update { it.copy(ttsScrollToNextParagraphTrigger = it.ttsScrollToNextParagraphTrigger + 1) }
     }
 
