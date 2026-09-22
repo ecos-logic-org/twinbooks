@@ -73,7 +73,8 @@ fun BookPanel(
     onSentenceTextFound: (String) -> Unit = {},
     onReachedEndOfChapter: () -> Unit = {},
     ttsRefreshTrigger: Int = 0,
-    ttsScrollToNextParagraphTrigger: Int = 0
+    ttsScrollToNextParagraphTrigger: Int = 0,
+    highlightSentenceIndex: Int = -1 // For right book: highlight specific sentence during TTS
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -189,6 +190,7 @@ private fun ChapterWebView(
     var lastAppliedSyncedState by remember { mutableStateOf(isSynchronized) }
     var lastAppliedTtsRefresh by remember { mutableIntStateOf(0) }
     var lastAppliedTtsScrollToNext by remember { mutableIntStateOf(0) }
+    var lastAppliedHighlightSentenceIndex by remember { mutableIntStateOf(-1) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -771,6 +773,19 @@ private fun ChapterWebView(
 
             if (ttsRefreshTrigger != lastAppliedTtsRefresh && highlightSentenceIndex >= 0) {
                 lastAppliedTtsRefresh = ttsRefreshTrigger
+                webView.evaluateJavascript(
+                    "highlightSentence($highlightSentenceIndex)"
+                ) { result ->
+                    val count = result?.replace("\"", "")?.toIntOrNull()
+                    if (count != null && count > 0) {
+                        currentOnSentenceCountChanged.value(count)
+                    }
+                }
+            }
+
+            // Highlight specific sentence in right book during TTS
+            if (highlightSentenceIndex != lastAppliedHighlightSentenceIndex && highlightSentenceIndex >= 0) {
+                lastAppliedHighlightSentenceIndex = highlightSentenceIndex
                 webView.evaluateJavascript(
                     "highlightSentence($highlightSentenceIndex)"
                 ) { result ->

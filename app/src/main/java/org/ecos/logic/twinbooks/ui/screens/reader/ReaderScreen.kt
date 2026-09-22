@@ -86,7 +86,15 @@ fun ReaderScreen(
     var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
     var scrollToLeftIndex by remember { mutableStateOf<Int?>(null) }
     var isSyncScrollingRight by remember { mutableStateOf(false) }
+    var highlightRightSentenceIndex by remember { mutableIntStateOf(-1) }
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Set up callback to highlight sentence in right book during TTS
+    LaunchedEffect(Unit) {
+        viewModel.onHighlightRightSentence = { index ->
+            highlightRightSentenceIndex = index
+        }
+    }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
         viewModel.updateTtsSentenceIndex(-1)
@@ -457,7 +465,8 @@ fun ReaderScreen(
                             }
                             rightParagraphIndex = index
                         },
-                        scrollToParagraphIndex = scrollToRightIndex
+                        scrollToParagraphIndex = scrollToRightIndex,
+                        highlightSentenceIndex = highlightRightSentenceIndex
                     )
                 } else {
                     EmptyBookPlaceholder(
