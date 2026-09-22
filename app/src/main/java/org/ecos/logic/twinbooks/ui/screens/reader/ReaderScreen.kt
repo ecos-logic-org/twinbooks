@@ -372,36 +372,6 @@ fun ReaderScreen(
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    // Next Chapter button - advances both books
-                    val canAdvanceLeft = state.leftBook != null && 
-                        state.leftPosition.chapterIndex < (state.leftBook?.totalChapters ?: 0) - 1
-                    val canAdvanceRight = state.rightBook != null && 
-                        state.rightPosition.chapterIndex < (state.rightBook?.totalChapters ?: 0) - 1
-                    val canAdvance = canAdvanceLeft || canAdvanceRight
-                    
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(
-                                if (canAdvance) Color(0xFF2A2A2A) else Color(0xFF1A1A1A),
-                                RoundedCornerShape(6.dp)
-                            )
-                            .border(
-                                1.dp,
-                                if (canAdvance) Color(0xFF555555) else Color(0xFF333333),
-                                RoundedCornerShape(6.dp)
-                            )
-                            .clickable(enabled = canAdvance) { viewModel.advanceBothBooksToNextChapter() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next chapter (both books)",
-                            tint = if (canAdvance) Color(0xFFB0B0B0) else Color(0xFF444444),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
                 }
             }
 
@@ -489,6 +459,10 @@ fun ReaderScreen(
     // Unified horizontal bar - overlay positioned between text content and thin progress bar, crosses both panels
     // Same 12dp horizontal padding as BottomInfoBar for visual alignment
     // Respects system insets (notches, navigation bar) like the main content Row
+    val canGoPrevChapter = state.leftBook != null && state.leftPosition.chapterIndex > 0
+    val canGoNextChapter = state.leftBook != null && 
+        state.leftPosition.chapterIndex < (state.leftBook?.totalChapters ?: 0) - 1
+    
     BottomBar(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -507,7 +481,17 @@ fun ReaderScreen(
         ttsBilingualMode = state.ttsBilingualMode,
         onSetTtsBilingualMode = { viewModel.setTtsBilingualMode(it) },
         onResetBooks = { showResetDialog = true },
-        onToggleBottomBar = { viewModel.toggleBottomBarVisibility() }
+        onToggleBottomBar = { viewModel.toggleBottomBarVisibility() },
+        onOpenBookshelf = {
+            // Navigate back to bookshelf - just stop TTS and finish the reader
+            viewModel.stopTts()
+            val activity = context as? android.app.Activity
+            activity?.finish()
+        },
+        onPrevChapter = { viewModel.navigateToPreviousChapter() },
+        onNextChapter = { viewModel.advanceBothBooksToNextChapter() },
+        canGoPrevChapter = canGoPrevChapter,
+        canGoNextChapter = canGoNextChapter
     )
 
     if (state.isLoading) {
@@ -588,7 +572,12 @@ private fun BottomBar(
     ttsBilingualMode: TtsBilingualMode,
     onSetTtsBilingualMode: (TtsBilingualMode) -> Unit,
     onResetBooks: () -> Unit,
-    onToggleBottomBar: () -> Unit
+    onToggleBottomBar: () -> Unit,
+    onOpenBookshelf: () -> Unit,
+    onPrevChapter: () -> Unit,
+    onNextChapter: () -> Unit,
+    canGoPrevChapter: Boolean,
+    canGoNextChapter: Boolean
 ) {
     Column(
         modifier = modifier
@@ -607,20 +596,98 @@ private fun BottomBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Refresh / Reset books button - FAR LEFT
+                // Group 1: Reset + Bookshelf
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .background(Color(0xFFB71C1C), RoundedCornerShape(4.dp))
-                        .border(1.dp, Color(0xFFD32F2F), RoundedCornerShape(4.dp))
-                        .clickable { onResetBooks() },
+                        .background(Color(0xFF232323), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF444444), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "⟳",
-                        color = Color(0xFFFFFFFF),
-                        fontSize = 16.sp
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Refresh / Reset books button
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color(0xFFB71C1C), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFFD32F2F), RoundedCornerShape(4.dp))
+                                .clickable { onResetBooks() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "⟳", color = Color(0xFFFFFFFF), fontSize = 16.sp)
+                        }
+
+                        // Bookshelf button
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color(0xFF1565C0), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFF42A5F5), RoundedCornerShape(4.dp))
+                                .clickable { onOpenBookshelf() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "📚", fontSize = 16.sp)
+                        }
+                    }
+                }
+
+                // Group 2: Chapter navigation (|< and >|)
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xFF232323), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF444444), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // Previous chapter (|<)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    if (canGoPrevChapter) Color(0xFF2A2A2A) else Color(0xFF1A1A1A),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (canGoPrevChapter) Color(0xFF555555) else Color(0xFF333333),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .clickable(enabled = canGoPrevChapter) { onPrevChapter() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "|<",
+                                color = if (canGoPrevChapter) Color(0xFFB0B0B0) else Color(0xFF444444),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        // Next chapter (>|)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    if (canGoNextChapter) Color(0xFF2A2A2A) else Color(0xFF1A1A1A),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (canGoNextChapter) Color(0xFF555555) else Color(0xFF333333),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .clickable(enabled = canGoNextChapter) { onNextChapter() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = ">|",
+                                color = if (canGoNextChapter) Color(0xFFB0B0B0) else Color(0xFF444444),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
 
                 // Font size controls group - tight container

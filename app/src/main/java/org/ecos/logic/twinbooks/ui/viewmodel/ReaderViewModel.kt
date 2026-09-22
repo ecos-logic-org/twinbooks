@@ -904,6 +904,32 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Go to previous chapter in both books simultaneously.
+     * Called from the bottom bar "Previous Chapter" button (|<).
+     */
+    fun navigateToPreviousChapter() {
+        stopTts()
+        
+        val leftBook = _state.value.leftBook ?: return
+        val leftChapter = _state.value.leftPosition.chapterIndex
+        
+        val rightBook = _state.value.rightBook
+        val rightChapter = _state.value.rightPosition.chapterIndex
+
+        // Check if either book can go back
+        val canGoBackLeft = leftChapter > 0
+        val canGoBackRight = rightBook != null && rightChapter > 0
+
+        if (canGoBackLeft) {
+            navigateToChapter(true, leftChapter - 1)
+            _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+        }
+        if (canGoBackRight) {
+            navigateToChapter(false, rightChapter - 1)
+        }
+    }
+
     fun updateTtsSentenceIndex(index: Int) {
         _state.update { it.copy(leftSentenceIndex = index) }
     }
