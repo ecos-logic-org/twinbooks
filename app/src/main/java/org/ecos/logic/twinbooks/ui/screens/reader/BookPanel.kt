@@ -870,40 +870,42 @@ private fun BottomInfoBar(
             }
         }
 
-        // Paragraph navigation buttons
-        Spacer(modifier = Modifier.width(12.dp))
-        Box(
-            modifier = Modifier
-                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
-                .size(36.dp),
-        ) {
-            IconButton(
-                onClick = onPrevParagraph,
-                modifier = Modifier.align(Alignment.Center)
+        if(false) {
+            // Paragraph navigation buttons
+            Spacer(modifier = Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                    .size(36.dp),
             ) {
-                Text(
-                    fontFamily = arrowFontFamily,
-                    text = "<|",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 20.sp
-                )
+                IconButton(
+                    onClick = onPrevParagraph,
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Text(
+                        fontFamily = arrowFontFamily,
+                        text = "<|",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 20.sp
+                    )
+                }
             }
-        }
-        Box(
-            modifier = Modifier
-                .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
-                .size(36.dp)
-        ) {
-            IconButton(
-                onClick = onNextParagraph,
-                modifier = Modifier.align(Alignment.Center)
+            Box(
+                modifier = Modifier
+                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(8.dp))
+                    .size(36.dp)
             ) {
-                Text(
-                    fontFamily = arrowFontFamily,
-                    text = "|>",
-                    color = Color(0xFFB0B0B0),
-                    fontSize = 20.sp
-                )
+                IconButton(
+                    onClick = onNextParagraph,
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Text(
+                        fontFamily = arrowFontFamily,
+                        text = "|>",
+                        color = Color(0xFFB0B0B0),
+                        fontSize = 20.sp
+                    )
+                }
             }
         }
 
