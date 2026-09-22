@@ -73,6 +73,7 @@ import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 @Composable
 fun ReaderScreen(
     sessionId: Long,
+    onBackToBookshelf: () -> Unit,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -483,10 +484,9 @@ fun ReaderScreen(
         onResetBooks = { showResetDialog = true },
         onToggleBottomBar = { viewModel.toggleBottomBarVisibility() },
         onOpenBookshelf = {
-            // Navigate back to bookshelf - just stop TTS and finish the reader
+            // Navigate back to bookshelf - stop TTS and notify parent
             viewModel.stopTts()
-            val activity = context as? android.app.Activity
-            activity?.finish()
+            onBackToBookshelf()
         },
         onPrevChapter = { viewModel.navigateToPreviousChapter() },
         onNextChapter = { viewModel.advanceBothBooksToNextChapter() },

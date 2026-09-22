@@ -39,7 +39,12 @@ fun MainScreen() {
     var showReader by remember { mutableStateOf(false) }
 
     if (showReader && currentSession != null) {
-        ReaderScreen(sessionId = currentSession!!.id)
+        ReaderScreen(
+            sessionId = currentSession!!.id,
+            onBackToBookshelf = {
+                showReader = false
+            }
+        )
     } else {
         BookshelfScreen(
             onSessionSelected = { session ->
