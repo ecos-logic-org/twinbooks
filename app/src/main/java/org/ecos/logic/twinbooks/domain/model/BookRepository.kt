@@ -3,8 +3,10 @@ package org.ecos.logic.twinbooks.domain.model
 interface BookRepository {
     suspend fun loadBookFromUri(uri: String): BookContent?
     suspend fun getLatestSession(): ReadingSession?
+    suspend fun getAllSessions(): List<ReadingSession>
     suspend fun saveSession(session: ReadingSession)
     suspend fun findSessionByLeftBook(bookUri: String): ReadingSession?
+    suspend fun deleteSession(sessionId: Long)
 }
 
 data class ReadingSession(

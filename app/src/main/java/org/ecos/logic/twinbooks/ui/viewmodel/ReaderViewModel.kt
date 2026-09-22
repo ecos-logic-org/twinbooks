@@ -43,9 +43,11 @@ class ReaderViewModel @Inject constructor(
     private var ttsExpectedRightParagraphIndex = -1 // Track expected right paragraph for sentence lookup
     // Callback to highlight sentence in right book
     var onHighlightRightSentence: ((Int) -> Unit)? = null
+    private var currentSessionId: Long = -1
 
-    init {
-        restoreLatestSession()
+    fun loadSession(sessionId: Long) {
+        currentSessionId = sessionId
+        restoreSession(sessionId)
         ttsManager.onSentenceComplete = { utteranceId -> onTtsSentenceComplete(utteranceId) }
         ttsManager.init()
         
@@ -54,6 +56,53 @@ class ReaderViewModel @Inject constructor(
             Log.d("ReaderViewModel", "Initializing translation manager...")
             val ready = translationManager.initialize()
             Log.d("ReaderViewModel", "Translation manager ready: $ready")
+        }
+    }
+
+    private fun restoreSession(sessionId: Long) {
+        viewModelScope.launch {
+            _state.update { it.copy(isLoading = true) }
+            val session = bookRepository.getAllSessions().firstOrNull { it.id == sessionId }
+            if (session != null) {
+                val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
+                val rightBook = session.rightBookUri?.let { bookRepository.loadBookFromUri(it) }
+
+                _state.update {
+                    it.copy(
+                        leftBook = leftBook,
+                        rightBook = rightBook,
+                        leftBookUri = session.leftBookUri,
+                        rightBookUri = session.rightBookUri,
+                        leftPosition = ReadingPosition(
+                            chapterIndex = session.leftChapterIndex,
+                            scrollOffset = session.leftScrollOffset,
+                            progressPercent = session.leftProgressPercent,
+                            paragraphText = session.leftParagraphText
+                        ),
+                        rightPosition = ReadingPosition(
+                            chapterIndex = session.rightChapterIndex,
+                            scrollOffset = session.rightScrollOffset,
+                            progressPercent = session.rightProgressPercent,
+                            paragraphText = session.rightParagraphText
+                        ),
+                        fontSize = session.fontSize,
+                        isSynchronized = session.isSynchronized,
+                        syncOffset = session.syncOffset,
+                        ttsTimeLimitMinutes = session.ttsTimeLimitMinutes,
+                        ttsBilingualMode = try {
+                            TtsBilingualMode.valueOf(session.ttsBilingualMode)
+                        } catch (_: Exception) {
+                            TtsBilingualMode.OFF
+                        },
+                        ttsSpeed = session.ttsSpeed,
+                        isLoading = false
+                    )
+                }
+            } else {
+                _state.update {
+                    it.copy(isLoading = false, errorMessage = "Session not found")
+                }
+            }
         }
     }
 
@@ -899,43 +948,47 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun restoreLatestSession() {
-        viewModelScope.launch {
-            val session = bookRepository.getLatestSession() ?: return@launch
-            _state.update { it.copy(isLoading = true) }
+        if (currentSessionId <= 0) {
+            // Fallback to latest session if no specific session ID provided
+            viewModelScope.launch {
+                val session = bookRepository.getLatestSession() ?: return@launch
+                currentSessionId = session.id
+                _state.update { it.copy(isLoading = true) }
 
-            val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
-            val rightBook = session.rightBookUri?.let { bookRepository.loadBookFromUri(it) }
+                val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
+                val rightBook = session.rightBookUri?.let { bookRepository.loadBookFromUri(it) }
 
-            _state.update {
-                it.copy(
-                    leftBook = leftBook,
-                    rightBook = rightBook,
-                    leftBookUri = session.leftBookUri,
-                    rightBookUri = session.rightBookUri,
-                    leftPosition = ReadingPosition(
-                        chapterIndex = session.leftChapterIndex,
-                        scrollOffset = session.leftScrollOffset,
-                        progressPercent = session.leftProgressPercent,
-                        paragraphText = session.leftParagraphText
-                    ),
-                    rightPosition = ReadingPosition(
-                        chapterIndex = session.rightChapterIndex,
-                        scrollOffset = session.rightScrollOffset,
-                        progressPercent = session.rightProgressPercent,
-                        paragraphText = session.rightParagraphText
-                    ),
-                    fontSize = session.fontSize,
-                    isSynchronized = session.isSynchronized,
-                    syncOffset = session.syncOffset,
-                    ttsTimeLimitMinutes = session.ttsTimeLimitMinutes,
-                    ttsBilingualMode = try {
-                        TtsBilingualMode.valueOf(session.ttsBilingualMode)
-                    } catch (_: Exception) {
-                        TtsBilingualMode.OFF
-                    },
-                    ttsSpeed = session.ttsSpeed,
-                    isLoading = false
-                )
+                _state.update {
+                    it.copy(
+                        leftBook = leftBook,
+                        rightBook = rightBook,
+                        leftBookUri = session.leftBookUri,
+                        rightBookUri = session.rightBookUri,
+                        leftPosition = ReadingPosition(
+                            chapterIndex = session.leftChapterIndex,
+                            scrollOffset = session.leftScrollOffset,
+                            progressPercent = session.leftProgressPercent,
+                            paragraphText = session.leftParagraphText
+                        ),
+                        rightPosition = ReadingPosition(
+                            chapterIndex = session.rightChapterIndex,
+                            scrollOffset = session.rightScrollOffset,
+                            progressPercent = session.rightProgressPercent,
+                            paragraphText = session.rightParagraphText
+                        ),
+                        fontSize = session.fontSize,
+                        isSynchronized = session.isSynchronized,
+                        syncOffset = session.syncOffset,
+                        ttsTimeLimitMinutes = session.ttsTimeLimitMinutes,
+                        ttsBilingualMode = try {
+                            TtsBilingualMode.valueOf(session.ttsBilingualMode)
+                        } catch (_: Exception) {
+                            TtsBilingualMode.OFF
+                        },
+                        ttsSpeed = session.ttsSpeed,
+                        isLoading = false
+                    )
+                }
             }
         }
     }
@@ -947,6 +1000,7 @@ class ReaderViewModel @Inject constructor(
             val leftTitle = s.leftBook?.title ?: return@launch
 
             val session = ReadingSession(
+                id = currentSessionId,
                 leftBookUri = leftUri,
                 rightBookUri = s.rightBookUri,
                 leftTitle = leftTitle,

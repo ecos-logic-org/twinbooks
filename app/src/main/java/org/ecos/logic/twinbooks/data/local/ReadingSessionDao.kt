@@ -12,6 +12,9 @@ interface ReadingSessionDao {
     @Query("SELECT * FROM reading_sessions ORDER BY lastOpenedTimestamp DESC LIMIT 1")
     suspend fun getLatestSession(): ReadingSessionEntity?
 
+    @Query("SELECT * FROM reading_sessions ORDER BY lastOpenedTimestamp DESC")
+    suspend fun getAllSessions(): List<ReadingSessionEntity>
+
     @Query("SELECT * FROM reading_sessions WHERE leftBookUri = :bookUri ORDER BY lastOpenedTimestamp DESC LIMIT 1")
     suspend fun getSessionByLeftBook(bookUri: String): ReadingSessionEntity?
 

@@ -72,6 +72,7 @@ import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 
 @Composable
 fun ReaderScreen(
+    sessionId: Long,
     viewModel: ReaderViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -88,6 +89,11 @@ fun ReaderScreen(
     var isSyncScrollingRight by remember { mutableStateOf(false) }
     var highlightRightSentenceIndex by remember { mutableIntStateOf(-1) }
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Load session when screen is created
+    LaunchedEffect(sessionId) {
+        viewModel.loadSession(sessionId)
+    }
 
     // Set up callback to highlight sentence in right book during TTS
     LaunchedEffect(Unit) {

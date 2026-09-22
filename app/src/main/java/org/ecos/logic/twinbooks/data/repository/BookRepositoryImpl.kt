@@ -24,6 +24,10 @@ class BookRepositoryImpl @Inject constructor(
         return readingSessionDao.getLatestSession()?.toDomain()
     }
 
+    override suspend fun getAllSessions(): List<ReadingSession> {
+        return readingSessionDao.getAllSessions().map { it.toDomain() }
+    }
+
     override suspend fun saveSession(session: ReadingSession) {
         val entity = session.toEntity()
         val existing = readingSessionDao.getSessionByLeftBook(session.leftBookUri)
@@ -36,6 +40,10 @@ class BookRepositoryImpl @Inject constructor(
 
     override suspend fun findSessionByLeftBook(bookUri: String): ReadingSession? {
         return readingSessionDao.getSessionByLeftBook(bookUri)?.toDomain()
+    }
+
+    override suspend fun deleteSession(sessionId: Long) {
+        readingSessionDao.deleteSession(sessionId)
     }
 
     private fun ReadingSessionEntity.toDomain() = ReadingSession(
