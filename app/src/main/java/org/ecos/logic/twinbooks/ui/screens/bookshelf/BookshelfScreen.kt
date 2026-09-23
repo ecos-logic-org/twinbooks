@@ -2,7 +2,10 @@ package org.ecos.logic.twinbooks.ui.screens.bookshelf
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
@@ -43,6 +46,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -51,9 +57,49 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.hilt.navigation.compose.hiltViewModel
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.ui.viewmodel.BookshelfViewModel
+import org.ecos.logic.twinbooks.ui.viewmodel.SessionWithCover
+import androidx.compose.ui.graphics.drawscope.DrawScope
+
+// Simple Painter wrapper for ImageBitmap
+private class BitmapPainter(private val bitmap: ImageBitmap) : Painter() {
+    override val intrinsicSize = androidx.compose.ui.geometry.Size(bitmap.width.toFloat(), bitmap.height.toFloat())
+
+    override fun DrawScope.onDraw() {
+        drawImage(bitmap)
+    }
+}
+
+/**
+ * Decodes a base64 data URI (format: data:mimeType;base64,<data>) to an ImageBitmap.
+ * Returns null if decoding fails.
+ */
+@Composable
+private fun rememberCoverBitmap(dataUri: String?): ImageBitmap? {
+    val context = LocalContext.current
+    return remember(dataUri) {
+        dataUri?.let { uri ->
+            // Extract base64 part from data URI: "data:mimeType;base64,<base64data>"
+            val base64Part = uri.substringAfter("base64,")
+                ?: uri.substringAfter(",") // fallback
+                ?: return@remember null
+            
+            try {
+                val bytes = Base64.decode(base64Part, Base64.NO_WRAP)
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                bitmap?.let { androidBitmap ->
+                    androidBitmap.asImageBitmap()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+}
 
 @Composable
 fun BookshelfScreen(
@@ -95,12 +141,18 @@ fun BookshelfScreen(
     var leftBookSelected by remember { mutableStateOf(false) }
     var rightBookSelected by remember { mutableStateOf(false) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .windowInsetsPadding(WindowInsets.displayCutout)
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .padding(16.dp)
     ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
         // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -161,19 +213,20 @@ fun BookshelfScreen(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                sessions.forEach { session ->
+                sessions.forEach { sessionWithCover ->
                     SessionCard(
-                        session = session,
-                        onClick = { onSessionSelected(session) },
+                        sessionWithCover = sessionWithCover,
+                        onClick = { onSessionSelected(sessionWithCover.session) },
                         onDelete = {
-                            sessionToDelete = session
+                            sessionToDelete = sessionWithCover.session
                             showDeleteDialog = true
                         }
                     )
                 }
             }
         }
-    }
+    } // Column
+} // Box
 
     // New pair dialog
     if (showNewPairDialog) {
@@ -235,10 +288,13 @@ fun BookshelfScreen(
 
 @Composable
 private fun SessionCard(
-    session: ReadingSession,
+    sessionWithCover: SessionWithCover,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val session = sessionWithCover.session
+    val leftCoverImage = sessionWithCover.leftCoverImage
+    val coverBitmap = rememberCoverBitmap(leftCoverImage)
     val leftProgress = (session.leftProgressPercent).toInt()
     val rightProgress = (session.rightProgressPercent).toInt()
 
@@ -254,18 +310,53 @@ private fun SessionCard(
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Book titles
+            // Book cover and titles
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                // Cover image
+                if (coverBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp, 72.dp)
+                            .background(Color(0xFF2A2A2A))
+                            .border(1.dp, Color(0xFF444444))
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = remember { BitmapPainter(coverBitmap) },
+                            contentDescription = session.leftTitle,
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    // Placeholder for missing cover
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp, 72.dp)
+                            .background(Color(0xFF2A2A2A))
+                            .border(1.dp, Color(0xFF444444)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MenuBook,
+                            contentDescription = "Book cover",
+                            tint = Color(0xFF555555),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                // Book titles
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = session.leftTitle,
                         color = Color.White,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     (session.rightTitle?.takeIf { it.isNotEmpty() })?.let { rightTitle ->
@@ -278,6 +369,7 @@ private fun SessionCard(
                         )
                     }
                 }
+
                 // Delete button
                 Box(
                     modifier = Modifier

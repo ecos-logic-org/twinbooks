@@ -3,7 +3,8 @@ package org.ecos.logic.twinbooks.domain.model
 data class BookContent(
     val title: String,
     val chapters: List<Chapter>,
-    val totalChapters: Int
+    val totalChapters: Int,
+    val coverImage: String? = null // Base64 data URI of cover image
 )
 
 data class Chapter(

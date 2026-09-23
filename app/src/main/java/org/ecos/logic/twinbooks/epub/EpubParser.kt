@@ -29,6 +29,9 @@ class EpubParser @Inject constructor(
             val spine = book.spine
             val spineReferences = spine.spineReferences
 
+            // Extract cover image as base64 data URI
+            val coverImage = extractCoverImage(book)
+
             // Load TOC from NCX/NAV for proper chapter titles
             val tocMap = buildTocMap(book.tableOfContents.tocReferences, title)
 
@@ -66,8 +69,45 @@ class EpubParser @Inject constructor(
             BookContent(
                 title = title,
                 chapters = chapters,
-                totalChapters = chapters.size
+                totalChapters = chapters.size,
+                coverImage = coverImage
             )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Extracts the cover image from the EPUB as a base64 data URI.
+     * Uses epub4j's cover image detection (looks for cover in metadata, then first image).
+     */
+    private fun extractCoverImage(book: io.documentnode.epub4j.domain.Book): String? {
+        return try {
+            // Try to get cover image from epub4j's built-in cover detection
+            val coverResource = book.coverImage
+            if (coverResource != null && coverResource.data.isNotEmpty()) {
+                val mimeType = coverResource.mediaType?.toString() ?: "image/jpeg"
+                val base64 = Base64.encodeToString(coverResource.data, Base64.NO_WRAP)
+                "data:$mimeType;base64,$base64"
+            } else {
+                // Fallback: find first image resource that might be a cover
+                // (often named "cover", "cover.jpg", etc.)
+                val coverCandidate = book.contents.firstOrNull { resource ->
+                    val mediaType = resource.mediaType?.toString() ?: ""
+                    val href = resource.href?.lowercase() ?: ""
+                    mediaType.startsWith("image/") && (
+                        href.contains("cover") ||
+                        href.contains("portada") ||
+                        resource.id?.lowercase()?.contains("cover") == true
+                    )
+                }
+                coverCandidate?.let { resource ->
+                    val mimeType = resource.mediaType?.toString() ?: "image/jpeg"
+                    val base64 = Base64.encodeToString(resource.data, Base64.NO_WRAP)
+                    "data:$mimeType;base64,$base64"
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null
