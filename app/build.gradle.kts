@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -101,4 +102,18 @@ dependencies {
     // Play Services Tasks (for await() extension)
     implementation("com.google.android.gms:play-services-tasks:18.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
-}
+
+    // MediaPipe Text Embedder (semantic similarity for sync)
+    implementation("com.google.mediapipe:tasks-text:0.10.14")
+
+    // Network (Retrofit + OkHttp + Moshi)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.moshi)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
+    implementation(libs.moshi)
+    implementation(libs.moshi.kotlin)
+    implementation(libs.moshi.adapters)
+    implementation(libs.kotlinx.serialization.json)
+
+    }

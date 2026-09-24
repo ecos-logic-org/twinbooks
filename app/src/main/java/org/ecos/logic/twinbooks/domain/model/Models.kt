@@ -44,6 +44,8 @@ data class ReadingState(
     val isBottomBarVisible: Boolean = false,
     val ttsBilingualMode: TtsBilingualMode = TtsBilingualMode.OFF,
     val ttsSpeed: Float = 1.0f,
+    // Server alignment progress indicator
+    val isServerAligning: Boolean = false,
     // Sync anchor points: set when user manually scrolls right book
     // anchorRight = right paragraph index at the moment of manual scroll
     // anchorLeft = left paragraph index at the moment of manual scroll

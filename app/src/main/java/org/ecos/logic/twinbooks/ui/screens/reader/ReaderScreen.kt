@@ -330,24 +330,56 @@ fun ReaderScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    // Sync button
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .background(
-                                if (state.isSynchronized) Color(0xFF2E7D32) else Color(0xFF2A2A2A),
-                                RoundedCornerShape(6.dp)
-                            )
-                            .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
-                            .clickable { viewModel.toggleSync() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Link,
-                            contentDescription = "Toggle synchronization",
-                            tint = if (state.isSynchronized) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
-                            modifier = Modifier.size(18.dp)
-                        )
+                    // Sync button + Retry button (vertical layout)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Sync button
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(
+                                    if (state.isSynchronized) Color(0xFF2E7D32) else Color(0xFF2A2A2A),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                .clickable { viewModel.toggleSync() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (state.isServerAligning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color(0xFF4CAF50),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Link,
+                                    contentDescription = "Toggle synchronization",
+                                    tint = if (state.isSynchronized) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        // Retry alignment button (only when sync is ON) - BELOW sync button
+                        if (state.isSynchronized) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        Color(0xFF2A2A2A),
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                    .clickable { viewModel.retryServerAlignment() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Link,
+                                    contentDescription = "Reintentar alineación del servidor",
+                                    tint = Color(0xFFFF9800), // Amber para diferenciar del sync (verde)
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
                     // Toggle bottom bar button

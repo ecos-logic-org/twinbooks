@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReadingSessionEntity::class],
-    version = 5,
+    version = 7,
     exportSchema = false
 )
 abstract class TwinBooksDatabase : RoomDatabase() {
@@ -39,6 +39,20 @@ abstract class TwinBooksDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN ttsTimeLimitMinutes INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN ttsBilingualMode TEXT NOT NULL DEFAULT 'OFF'")
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN ttsSpeed REAL NOT NULL DEFAULT 1.0")
+            }
+        }
+
+        // v5->6: se añadió y quitó sentence_alignments (desarrollo)
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS sentence_alignments")
+            }
+        }
+
+        // v6->7: limpieza final (desarrollo)
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS sentence_alignments")
             }
         }
     }

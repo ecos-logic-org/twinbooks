@@ -12,12 +12,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+import org.ecos.logic.twinbooks.alignment.AlignmentManager
+import org.ecos.logic.twinbooks.alignment.model.AlignmentResultWrapper
+import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
+import org.ecos.logic.twinbooks.embedding.EmbeddingManager
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
@@ -26,7 +31,10 @@ import javax.inject.Inject
 class ReaderViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val ttsManager: TtsManager,
-    private val translationManager: TranslationManager
+    private val translationManager: TranslationManager,
+    private val embeddingManager: EmbeddingManager,
+    private val alignmentManager: AlignmentManager,
+    private val alignmentRepository: AlignmentRepository
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReadingState())
@@ -41,6 +49,16 @@ class ReaderViewModel @Inject constructor(
     private var ttsExpectedSentenceIndex = -1 // Track which sentence index we expect from TTS-driven highlight
     private var ttsExpectedParagraphIndex = -1 // Track which paragraph we're in
     private var ttsExpectedRightParagraphIndex = -1 // Track expected right paragraph for sentence lookup
+    // Hybrid sync state: global search first time, then local window around last match
+    private var isFirstSyncInChapter = true
+    private var lastKnownRightIndex = -1
+    private var lastMatchScore = 0f
+    private val MIN_SYNC_SCORE = 0.15f // 15% minimum word overlap to trust match (translation fallback)
+    // Sentence alignment state (computed per chapter pair)
+    private var currentSentenceAlignment: List<Pair<Int, Int>> = emptyList()
+    private var currentLeftSentencesPerPara: List<Int> = emptyList()
+    private var currentRightSentencesPerPara: List<Int> = emptyList()
+    private var alignmentComputationJob: Job? = null
     // Callback to highlight sentence in right book
     var onHighlightRightSentence: ((Int) -> Unit)? = null
     private var currentSessionId: Long = -1
@@ -318,6 +336,49 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Retry server alignment for current paragraph.
+     * Called when user presses "retry" button next to sync button.
+     */
+    fun retryServerAlignment() {
+        val currentState = _state.value
+        if (!currentState.isSynchronized) return
+        
+        val leftBook = currentState.leftBook
+        val rightBook = currentState.rightBook
+        val leftChapterIdx = currentState.leftPosition.chapterIndex
+        val rightChapterIdx = currentState.rightPosition.chapterIndex
+        
+        if (leftBook == null || rightBook == null) return
+        if (leftChapterIdx < 0 || leftChapterIdx >= leftBook.chapters.size) return
+        if (rightChapterIdx < 0 || rightChapterIdx >= rightBook.chapters.size) return
+        
+        val leftChapter = leftBook.chapters[leftChapterIdx]
+        val rightChapter = rightBook.chapters[rightChapterIdx]
+        
+        viewModelScope.launch {
+            _state.update { it.copy(isServerAligning = true) }
+            
+            val response = alignmentRepository.alignChapter(
+                leftSentences = extractAllSentences(leftChapter.htmlContent),
+                rightSentences = extractAllSentences(rightChapter.htmlContent),
+                method = "hungarian",
+                similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
+            )
+            
+            _state.update { it.copy(isServerAligning = false) }
+            
+            response?.let { response ->
+                // Update local alignment cache with new server results
+                currentSentenceAlignment = response.alignment.map { Pair(it.leftIdx, it.rightIdx) }
+                currentLeftSentencesPerPara = countSentencesPerParagraph(leftChapter.htmlContent)
+                currentRightSentencesPerPara = countSentencesPerParagraph(rightChapter.htmlContent)
+                
+                Log.d("AlignmentRetry", "Server retry succeeded: ${response.alignment.size} pairs")
+            }
+        }
+    }
+
     fun toggleBottomBarVisibility() {
         _state.update { it.copy(isBottomBarVisible = !it.isBottomBarVisible) }
         saveCurrentSession()
@@ -482,7 +543,25 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
+     * Extract all sentences from HTML content (across all paragraphs)
+     */
+    private fun extractAllSentences(html: String): List<String> {
+        val paragraphs = extractParagraphs(html)
+        return paragraphs.flatMap { extractSentences(it) }
+    }
+
+    /**
+     * Count sentences per paragraph in HTML content
+     * Returns list where each element is the sentence count for that paragraph
+     */
+    private fun countSentencesPerParagraph(html: String): List<Int> {
+        val paragraphs = extractParagraphs(html)
+        return paragraphs.map { extractSentences(it).size }
+    }
+
+    /**
      * Find the best matching Spanish sentence from the synchronized right paragraph
+     * Uses server-side alignment first (highest quality, async), then falls back to local DP, embeddings, translation
      * @param englishSentence The English sentence being spoken
      * @param rightParaIndex Override for right paragraph index (use during paragraph transitions)
      * @return Pair of (spanishSentence, sentenceIndexInParagraph), or null if not found
@@ -494,10 +573,15 @@ class ReaderViewModel @Inject constructor(
         val currentState = _state.value
         val rightBook = currentState.rightBook ?: return null
         val rightChapter = rightBook.chapters.getOrNull(currentState.rightPosition.chapterIndex) ?: return null
+        val leftChapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex) ?: return null
         
         // Use provided index or fall back to synchronized right paragraph index
         val paraIndex = rightParaIndex ?: currentState.rightParagraphIndex
         if (paraIndex < 0) return null
+        
+        // Use the TTS-tracked left sentence index directly
+        val leftSentenceIdx = currentState.leftSentenceIndex
+        if (leftSentenceIdx < 0) return null
         
         // Extract paragraphs from right chapter
         val rightParagraphs = extractParagraphs(rightChapter.htmlContent)
@@ -513,7 +597,61 @@ class ReaderViewModel @Inject constructor(
         // If only one sentence, return it with index 0
         if (spanishSentences.size == 1) return Pair(spanishSentences[0], 0)
         
-        // Use translation manager to find best match (it uses semantic similarity)
+        // STRATEGY 1: Server-side alignment (highest quality, async)
+        // This is now the primary strategy since server uses better models
+        try {
+            val serverResponse = alignmentRepository.alignChapter(
+                leftSentences = extractAllSentences(leftChapter.htmlContent),
+                rightSentences = extractAllSentences(rightChapter.htmlContent),
+                method = "hungarian",
+                similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
+            )
+            
+            serverResponse?.let { response ->
+                val pair = response.alignment.firstOrNull { it.leftIdx == leftSentenceIdx }
+                if (pair != null) {
+                    val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
+                    val localRightIdx = pair.rightIdx - rightSentencesBeforePara
+                    if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
+                        Log.d("TtsBilingual", "Server Alignment match: leftSentence=$leftSentenceIdx → rightSentence=${pair.rightIdx} (local=$localRightIdx, score=${pair.score})")
+                        return Pair(spanishSentences[localRightIdx], localRightIdx)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("TtsBilingual", "Server alignment exception, falling back to local", e)
+        }
+        
+        // STRATEGY 2: Pre-computed DP Alignment (instant fallback)
+        if (currentSentenceAlignment.isNotEmpty()) {
+            val alignedRightIdx = alignmentManager.getRightSentenceIndex(currentSentenceAlignment, leftSentenceIdx)
+            if (alignedRightIdx != null) {
+                val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
+                val localRightIdx = alignedRightIdx - rightSentencesBeforePara
+                
+                if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
+                    Log.d("TtsBilingual", "DP Alignment fallback: leftSentence=$leftSentenceIdx → rightSentence=$alignedRightIdx (local=$localRightIdx)")
+                    return Pair(spanishSentences[localRightIdx], localRightIdx)
+                } else {
+                    Log.w("TtsBilingual", "DP Alignment local index out of bounds: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightSentencesBeforePara=$rightSentencesBeforePara, alignedRightIdx=$alignedRightIdx")
+                }
+            }
+        }
+        
+        // STRATEGY 3: Semantic Embeddings for sentence matching (fallback)
+        if (embeddingManager.isReady.value) {
+            val (bestIndex, score) = embeddingManager.findBestSentenceMatch(
+                sourceSentence = englishSentence,
+                candidateSentences = spanishSentences
+            )
+            Log.d("TtsBilingual", "Embedding fallback: index=$bestIndex, score=${(score * 100).roundToInt()}%")
+            if (score >= EmbeddingManager.MIN_SEMANTIC_SCORE && bestIndex >= 0 && bestIndex < spanishSentences.size) {
+                return Pair(spanishSentences[bestIndex], bestIndex)
+            }
+            Log.w("TtsBilingual", "Low semantic score ($score), falling back to translation")
+        }
+        
+        // STRATEGY 4: Translation + Word Overlap fallback
         val bestIndex = translationManager.findBestMatch(
             sourceText = englishSentence,
             candidates = spanishSentences,
