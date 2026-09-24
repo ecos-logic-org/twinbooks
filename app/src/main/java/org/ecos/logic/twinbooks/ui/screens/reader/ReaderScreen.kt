@@ -104,7 +104,13 @@ fun ReaderScreen(
     }
 
     LaunchedEffect(state.leftPosition.paragraphText) {
-        viewModel.updateTtsSentenceIndex(-1)
+        // While TTS is playing, the ViewModel owns leftSentenceIndex (it tracks the sentence
+        // the WebView must speak next). Resetting it to -1 here raced with the sentence
+        // callback: expected=0 vs state=-1 made every callback be ignored forever (TTS deadlock
+        // that only recovered when pressing <- manually).
+        if (!state.isTtsPlaying) {
+            viewModel.updateTtsSentenceIndex(-1)
+        }
         rightSentenceIndex = -1
         rightOffset = 0
     }
@@ -272,6 +278,9 @@ fun ReaderScreen(
                         scrollToParagraphIndex = scrollToLeftIndex,
                         ttsRefreshTrigger = viewModel.ttsRefreshTrigger,
                         ttsScrollToNextParagraphTrigger = state.ttsScrollToNextParagraphTrigger,
+                        onChapterSentences = { chapter, json ->
+                            viewModel.onLeftChapterSentences(chapter, json)
+                        },
                         onReachedEndOfChapter = {
                             viewModel.advanceTtsToNextChapter()
                         }
@@ -475,7 +484,10 @@ fun ReaderScreen(
                             rightParagraphIndex = index
                         },
                         scrollToParagraphIndex = scrollToRightIndex,
-                        highlightSentenceIndex = highlightRightSentenceIndex
+                        highlightSentenceIndex = highlightRightSentenceIndex,
+                        onChapterSentences = { chapter, json ->
+                            viewModel.onRightChapterSentences(chapter, json)
+                        }
                     )
                 } else {
                     EmptyBookPlaceholder(

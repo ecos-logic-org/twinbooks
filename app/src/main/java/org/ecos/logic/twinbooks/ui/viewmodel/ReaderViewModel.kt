@@ -14,10 +14,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import org.ecos.logic.twinbooks.alignment.AlignmentManager
+import org.ecos.logic.twinbooks.alignment.model.ChapterAlignResponse
 import org.ecos.logic.twinbooks.alignment.model.AlignmentResultWrapper
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
+import org.ecos.logic.twinbooks.domain.model.Chapter
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
@@ -59,6 +61,16 @@ class ReaderViewModel @Inject constructor(
     private var currentLeftSentencesPerPara: List<Int> = emptyList()
     private var currentRightSentencesPerPara: List<Int> = emptyList()
     private var alignmentComputationJob: Job? = null
+    // Chapter sentence lists pushed from the WebView (compromise.js is the single splitter).
+    // Global index = sum(sentences per paragraph before para) + paragraph-local index.
+    private var leftChapterSentencesByPara: List<List<String>> = emptyList()
+    private var rightChapterSentencesByPara: List<List<String>> = emptyList()
+    private var leftSentencesChapterIdx: Int = -1
+    private var rightSentencesChapterIdx: Int = -1
+    // Server alignment cache: one HTTP call per chapter pair instead of one per sentence
+    private var chapterAlignmentCache: ChapterAlignResponse? = null
+    private var chapterAlignmentCacheKey: String? = null
+    private var currentAlignmentKey: String? = null
     // Callback to highlight sentence in right book
     var onHighlightRightSentence: ((Int) -> Unit)? = null
     private var currentSessionId: Long = -1
@@ -337,6 +349,45 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
+     * Called when the LEFT WebView pushes its compromise.js sentence list for a chapter.
+     * @param chapterIndex chapter the list belongs to (guards against stale pushes)
+     * @param sentencesJson JSON array of arrays: [[sentences of para 0], [para 1], ...]
+     */
+    fun onLeftChapterSentences(chapterIndex: Int, sentencesJson: String) {
+        val parsed = parseSentencesByParagraph(sentencesJson)
+        if (parsed.isEmpty()) return
+        leftChapterSentencesByPara = parsed
+        leftSentencesChapterIdx = chapterIndex
+        currentLeftSentencesPerPara = parsed.map { it.size }
+        Log.d("SentenceSplit", "Left ch=$chapterIndex: ${parsed.size} paras, ${parsed.sumOf { it.size }} sentences")
+    }
+
+    /**
+     * Called when the RIGHT WebView pushes its compromise.js sentence list for a chapter.
+     */
+    fun onRightChapterSentences(chapterIndex: Int, sentencesJson: String) {
+        val parsed = parseSentencesByParagraph(sentencesJson)
+        if (parsed.isEmpty()) return
+        rightChapterSentencesByPara = parsed
+        rightSentencesChapterIdx = chapterIndex
+        currentRightSentencesPerPara = parsed.map { it.size }
+        Log.d("SentenceSplit", "Right ch=$chapterIndex: ${parsed.size} paras, ${parsed.sumOf { it.size }} sentences")
+    }
+
+    private fun parseSentencesByParagraph(json: String): List<List<String>> {
+        return try {
+            val outer = org.json.JSONArray(json)
+            (0 until outer.length()).map { i ->
+                val inner = outer.getJSONArray(i)
+                (0 until inner.length()).map { j -> inner.getString(j) }
+            }
+        } catch (e: Exception) {
+            Log.w("SentenceSplit", "Failed to parse chapter sentences JSON", e)
+            emptyList()
+        }
+    }
+
+    /**
      * Retry server alignment for current paragraph.
      * Called when user presses "retry" button next to sync button.
      */
@@ -359,22 +410,15 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isServerAligning = true) }
             
-            val response = alignmentRepository.alignChapter(
-                leftSentences = extractAllSentences(leftChapter.htmlContent),
-                rightSentences = extractAllSentences(rightChapter.htmlContent),
-                method = "dtw",
-                similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
-            )
+            // Force a fresh server alignment (bypasses the per-chapter cache)
+            val response = getChapterAlignment(leftChapter, rightChapter, forceRefresh = true)
             
             _state.update { it.copy(isServerAligning = false) }
             
-            response?.let { response ->
-                // Update local alignment cache with new server results
-                currentSentenceAlignment = response.alignment.map { Pair(it.leftIdx, it.rightIdx) }
-                currentLeftSentencesPerPara = countSentencesPerParagraph(leftChapter.htmlContent)
-                currentRightSentencesPerPara = countSentencesPerParagraph(rightChapter.htmlContent)
-                
+            if (response != null) {
                 Log.d("AlignmentRetry", "Server retry succeeded: ${response.alignment.size} pairs")
+            } else {
+                Log.w("AlignmentRetry", "Server retry failed (server down or chapter sentences not ready yet)")
             }
         }
     }
@@ -532,31 +576,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
-     * Extract sentences from text using compromise.js-like logic (simple regex fallback)
+     * Extract sentences from text (simple regex).
+     * Cold fallback only: used when the WebView (compromise.js) sentence list isn't ready yet.
      */
     private fun extractSentences(text: String): List<String> {
-        // Simple sentence splitting - in production this should use the same logic as compromise.js
         return text.split(Regex("(?<=[.!?])\\s+"))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .toList()
-    }
-
-    /**
-     * Extract all sentences from HTML content (across all paragraphs)
-     */
-    private fun extractAllSentences(html: String): List<String> {
-        val paragraphs = extractParagraphs(html)
-        return paragraphs.flatMap { extractSentences(it) }
-    }
-
-    /**
-     * Count sentences per paragraph in HTML content
-     * Returns list where each element is the sentence count for that paragraph
-     */
-    private fun countSentencesPerParagraph(html: String): List<Int> {
-        val paragraphs = extractParagraphs(html)
-        return paragraphs.map { extractSentences(it).size }
     }
 
     /**
@@ -583,57 +610,70 @@ class ReaderViewModel @Inject constructor(
         val leftSentenceIdx = currentState.leftSentenceIndex
         if (leftSentenceIdx < 0) return null
         
-        // Extract paragraphs from right chapter
+        // Extract paragraphs from right chapter (cold fallback if the WebView list isn't ready)
         val rightParagraphs = extractParagraphs(rightChapter.htmlContent)
-        if (paraIndex >= rightParagraphs.size) return null
-        
-        // Get the Spanish paragraph text
-        val spanishParagraph = rightParagraphs[paraIndex]
-        
-        // Extract sentences from the Spanish paragraph
-        val spanishSentences = extractSentences(spanishParagraph)
+
+        // Spanish candidates: compromise.js list pushed by the right WebView.
+        // Same splitting as the TTS index space, the server alignment input and the offsets.
+        val bridgeRightSentences = if (rightSentencesChapterIdx == currentState.rightPosition.chapterIndex) {
+            rightChapterSentencesByPara.getOrNull(paraIndex)
+        } else null
+        val spanishSentences = when {
+            !bridgeRightSentences.isNullOrEmpty() -> bridgeRightSentences
+            paraIndex < rightParagraphs.size -> extractSentences(rightParagraphs[paraIndex])
+            else -> return null
+        }
         if (spanishSentences.isEmpty()) return null
         
         // If only one sentence, return it with index 0
         if (spanishSentences.size == 1) return Pair(spanishSentences[0], 0)
-        
-        // STRATEGY 1: Server-side alignment (highest quality, async)
-        // This is now the primary strategy since server uses better models
-        try {
-            val serverResponse = alignmentRepository.alignChapter(
-                leftSentences = extractAllSentences(leftChapter.htmlContent),
-                rightSentences = extractAllSentences(rightChapter.htmlContent),
-                method = "dtw",
-                similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
-            )
-            
-            serverResponse?.let { response ->
-                val pair = response.alignment.firstOrNull { it.leftIdx == leftSentenceIdx }
-                if (pair != null) {
-                    val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
-                    val localRightIdx = pair.rightIdx - rightSentencesBeforePara
-                    if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
-                        Log.d("TtsBilingual", "Server Alignment match: leftSentence=$leftSentenceIdx → rightSentence=${pair.rightIdx} (local=$localRightIdx, score=${pair.score})")
-                        return Pair(spanishSentences[localRightIdx], localRightIdx)
+
+        // Alignment indices are CHAPTER-GLOBAL while TTS indices are PARAGRAPH-LOCAL.
+        // Convert using per-paragraph offsets derived from the same compromise lists.
+        val leftParaIndex = currentState.leftParagraphIndex
+        val sentencesReady = leftSentencesChapterIdx == currentState.leftPosition.chapterIndex &&
+                rightSentencesChapterIdx == currentState.rightPosition.chapterIndex &&
+                currentLeftSentencesPerPara.isNotEmpty() &&
+                currentRightSentencesPerPara.isNotEmpty() &&
+                leftParaIndex >= 0
+
+        if (sentencesReady) {
+            val leftGlobalIdx = currentLeftSentencesPerPara.take(leftParaIndex).sum() + leftSentenceIdx
+            val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
+
+            // STRATEGY 1: Server-side alignment (cached per chapter pair, one HTTP call)
+            try {
+                val response = getChapterAlignment(leftChapter, rightChapter)
+                response?.let { r ->
+                    val pair = r.alignment.firstOrNull { it.leftIdx == leftGlobalIdx }
+                    if (pair != null) {
+                        val localRightIdx = pair.rightIdx - rightSentencesBeforePara
+                        if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
+                            Log.d("TtsBilingual", "Server Alignment match: leftGlobal=$leftGlobalIdx → rightGlobal=${pair.rightIdx} (local=$localRightIdx, score=${pair.score})")
+                            return Pair(spanishSentences[localRightIdx], localRightIdx)
+                        } else {
+                            Log.w("TtsBilingual", "Server alignment pair outside paragraph: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightBeforePara=$rightSentencesBeforePara")
+                        }
+                    } else {
+                        Log.w("TtsBilingual", "Server alignment has no pair for leftGlobal=$leftGlobalIdx")
                     }
                 }
+            } catch (e: Exception) {
+                Log.w("TtsBilingual", "Server alignment exception, falling back to local", e)
             }
-        } catch (e: Exception) {
-            Log.w("TtsBilingual", "Server alignment exception, falling back to local", e)
-        }
-        
-        // STRATEGY 2: Pre-computed DP Alignment (instant fallback)
-        if (currentSentenceAlignment.isNotEmpty()) {
-            val alignedRightIdx = alignmentManager.getRightSentenceIndex(currentSentenceAlignment, leftSentenceIdx)
-            if (alignedRightIdx != null) {
-                val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
-                val localRightIdx = alignedRightIdx - rightSentencesBeforePara
-                
-                if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
-                    Log.d("TtsBilingual", "DP Alignment fallback: leftSentence=$leftSentenceIdx → rightSentence=$alignedRightIdx (local=$localRightIdx)")
-                    return Pair(spanishSentences[localRightIdx], localRightIdx)
-                } else {
-                    Log.w("TtsBilingual", "DP Alignment local index out of bounds: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightSentencesBeforePara=$rightSentencesBeforePara, alignedRightIdx=$alignedRightIdx")
+
+            // STRATEGY 2: Pre-computed DP Alignment (instant fallback, same global index space)
+            if (currentSentenceAlignment.isNotEmpty() && currentAlignmentKey == alignmentCacheKey(leftChapter, rightChapter)) {
+                val alignedRightIdx = alignmentManager.getRightSentenceIndex(currentSentenceAlignment, leftGlobalIdx)
+                if (alignedRightIdx != null) {
+                    val localRightIdx = alignedRightIdx - rightSentencesBeforePara
+
+                    if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
+                        Log.d("TtsBilingual", "DP Alignment fallback: leftGlobal=$leftGlobalIdx → rightGlobal=$alignedRightIdx (local=$localRightIdx)")
+                        return Pair(spanishSentences[localRightIdx], localRightIdx)
+                    } else {
+                        Log.w("TtsBilingual", "DP Alignment local index out of bounds: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightSentencesBeforePara=$rightSentencesBeforePara, alignedRightIdx=$alignedRightIdx")
+                    }
                 }
             }
         }
@@ -663,6 +703,51 @@ class ReaderViewModel @Inject constructor(
         } else {
             Pair(spanishSentences[0], 0) // fallback to first sentence
         }
+    }
+
+    /**
+     * Cache key for a chapter pair's alignment. Includes sentence totals so a new
+     * compromise.js push with a different split invalidates the cache automatically.
+     */
+    private fun alignmentCacheKey(leftChapter: Chapter, rightChapter: Chapter): String =
+        "${leftChapter.index}:${rightChapter.index}:${currentLeftSentencesPerPara.sum()}:${currentRightSentencesPerPara.sum()}"
+
+    /**
+     * Get chapter-level sentence alignment from the server, cached per chapter pair.
+     * Input sentences come from the WebView bridge (compromise.js), so global indices
+     * match the paragraph-local TTS indices via: global = offset(para) + local.
+     */
+    private suspend fun getChapterAlignment(
+        leftChapter: Chapter,
+        rightChapter: Chapter,
+        forceRefresh: Boolean = false
+    ): ChapterAlignResponse? {
+        val key = alignmentCacheKey(leftChapter, rightChapter)
+        if (!forceRefresh) {
+            chapterAlignmentCache?.let { if (chapterAlignmentCacheKey == key) return it }
+        }
+
+        val leftSentences = leftChapterSentencesByPara.flatten()
+        val rightSentences = rightChapterSentencesByPara.flatten()
+        if (leftSentences.isEmpty() || rightSentences.isEmpty()) {
+            Log.w("AlignmentCache", "Chapter sentences not ready yet (left=${leftSentences.size}, right=${rightSentences.size})")
+            return null
+        }
+
+        val response = alignmentRepository.alignChapter(
+            leftSentences = leftSentences,
+            rightSentences = rightSentences,
+            method = "dtw",
+            similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
+        )
+        if (response != null) {
+            chapterAlignmentCache = response
+            chapterAlignmentCacheKey = key
+            currentSentenceAlignment = response.alignment.map { Pair(it.leftIdx, it.rightIdx) }
+            currentAlignmentKey = key
+            Log.d("AlignmentCache", "Chapter aligned & cached: ${response.alignment.size} pairs (key=$key)")
+        }
+        return response
     }
 
     // --- TTS Methods ---
@@ -757,8 +842,16 @@ class ReaderViewModel @Inject constructor(
         val paragraphMatches = currentParagraphIndex == ttsExpectedParagraphIndex
         
         if (currentSentenceIndex != ttsExpectedSentenceIndex || !paragraphMatches) {
-            Log.d("TtsBilingual", "Ignoring spurious onTtsSentenceTextReceived: expected sentence=$ttsExpectedSentenceIndex para=$ttsExpectedParagraphIndex, got sentence=$currentSentenceIndex para=$currentParagraphIndex")
-            return
+            if (currentSentenceIndex == -1 && ttsExpectedSentenceIndex >= 0 && paragraphMatches) {
+                // Self-heal: the sentence index was reset to -1 (scroll race) while TTS is
+                // waiting for a real index on the RIGHT paragraph. Adopt the expected index
+                // instead of dropping every callback forever (TTS deadlock).
+                Log.w("TtsBilingual", "Adopting expected sentence=$ttsExpectedSentenceIndex after -1 reset (para=$currentParagraphIndex)")
+                _state.update { it.copy(leftSentenceIndex = ttsExpectedSentenceIndex) }
+            } else {
+                Log.d("TtsBilingual", "Ignoring spurious onTtsSentenceTextReceived: expected sentence=$ttsExpectedSentenceIndex para=$ttsExpectedParagraphIndex, got sentence=$currentSentenceIndex para=$currentParagraphIndex")
+                return
+            }
         }
         
         lastSpokenEnglishText = text
@@ -961,10 +1054,13 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun advanceTtsParagraph() {
-        // Advance to next paragraph
+        // Advance to next paragraph.
+        // NOTE: leftParagraphIndex is deliberately NOT updated here. The WebView confirms
+        // the new paragraph via onParagraphFound after the scroll really happened, and that
+        // confirmation is what prevents a stale sentence from the OLD paragraph (highlightSentence
+        // fires immediately on index change, before the scroll) from being accepted as spoken text.
         val nextParagraphIndex = _state.value.leftParagraphIndex + 1
-        _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
-        
+
         // Calculate expected right paragraph using anchor (if available)
         val currentState = _state.value
         val expectedRightPara = if (currentState.syncAnchorLeftIndex >= 0 && currentState.syncAnchorRightIndex >= 0) {
@@ -973,13 +1069,19 @@ class ReaderViewModel @Inject constructor(
         } else {
             currentState.rightParagraphIndex + 1 // fallback
         }
-        
-        // Update expected indices for the new paragraph
+
+        // Reset sentence tracking atomically and ask the WebView to scroll to the next paragraph
+        _state.update { state ->
+            state.copy(
+                leftSentenceIndex = 0,
+                leftSentenceCount = 0,
+                ttsScrollToNextParagraphTrigger = state.ttsScrollToNextParagraphTrigger + 1
+            )
+        }
+
         ttsExpectedSentenceIndex = 0
         ttsExpectedParagraphIndex = nextParagraphIndex
         ttsExpectedRightParagraphIndex = expectedRightPara
-        
-        _state.update { it.copy(ttsScrollToNextParagraphTrigger = it.ttsScrollToNextParagraphTrigger + 1) }
     }
 
     fun advanceTtsToNextChapter() {
@@ -997,6 +1099,11 @@ class ReaderViewModel @Inject constructor(
                 }
             }
             _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
+            // Reset expected TTS position for paragraph 0 of the new chapter, otherwise
+            // every WebView callback would be rejected as "spurious" (TTS stall at chapter end)
+            ttsExpectedSentenceIndex = 0
+            ttsExpectedParagraphIndex = 0
+            ttsExpectedRightParagraphIndex = if (rightBook != null) 0 else _state.value.rightParagraphIndex
             viewModelScope.launch {
                 delay(500)
                 if (_state.value.isTtsPlaying) {

@@ -74,7 +74,8 @@ fun BookPanel(
     onReachedEndOfChapter: () -> Unit = {},
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
-    highlightSentenceIndex: Int = -1 // For right book: highlight specific sentence during TTS
+    highlightSentenceIndex: Int = -1, // For right book: highlight specific sentence during TTS
+    onChapterSentences: (chapterIndex: Int, sentencesJson: String) -> Unit = { _, _ -> }
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -112,7 +113,9 @@ fun BookPanel(
                     onReachedEndOfChapter = onReachedEndOfChapter,
                     scrollToParagraphIndex = scrollToParagraphIndex,
                     ttsRefreshTrigger = ttsRefreshTrigger,
-                    ttsScrollToNextParagraphTrigger = ttsScrollToNextParagraphTrigger
+                    ttsScrollToNextParagraphTrigger = ttsScrollToNextParagraphTrigger,
+                    // Bind the sentence list push to this panel's current chapter
+                    onChapterSentences = { json -> onChapterSentences(position.chapterIndex, json) }
                 )
             }
         }
@@ -169,7 +172,8 @@ private fun ChapterWebView(
     onReachedEndOfChapter: () -> Unit = {},
     scrollToParagraphIndex: Int? = null,
     ttsRefreshTrigger: Int = 0,
-    ttsScrollToNextParagraphTrigger: Int = 0
+    ttsScrollToNextParagraphTrigger: Int = 0,
+    onChapterSentences: (sentencesJson: String) -> Unit = {}
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -184,6 +188,8 @@ private fun ChapterWebView(
     currentOnParagraphDoubleClicked.value = onParagraphDoubleClicked
     val currentOnReachedEndOfChapter = remember { mutableStateOf(onReachedEndOfChapter) }
     currentOnReachedEndOfChapter.value = onReachedEndOfChapter
+    val currentOnChapterSentences = remember { mutableStateOf(onChapterSentences) }
+    currentOnChapterSentences.value = onChapterSentences
     var lastAppliedSentenceIndex by remember { mutableIntStateOf(-1) }
     var lastAppliedFontSize by remember { mutableIntStateOf(fontSize) }
     var lastAppliedScrollToIndex by remember { mutableStateOf<Int?>(null) }
@@ -379,6 +385,27 @@ private fun ChapterWebView(
                     } catch(e) {}
                 }
                 return [text];
+            }
+
+            // Collect the compromise.js sentence list for every paragraph of this chapter
+            // and push it to Kotlin. This is the SINGLE source of truth for sentence
+            // splitting: TTS indices, Spanish candidates, server alignment and offsets
+            // are all derived from this list.
+            function collectChapterSentences() {
+                var out = [];
+                var paras = document.querySelectorAll('p');
+                for (var i = 0; i < paras.length; i++) {
+                    out.push(getSentences(paras[i].textContent));
+                }
+                return out;
+            }
+
+            function sendAllSentences() {
+                if (window.ParagraphBridge) {
+                    try {
+                        window.ParagraphBridge.onChapterSentencesFound(JSON.stringify(collectChapterSentences()));
+                    } catch (e) {}
+                }
             }
 
             function highlightSentence(index) {
@@ -627,6 +654,9 @@ private fun ChapterWebView(
             window.getParagraphIndex = getParagraphIndex;
             window.highlightSentence = highlightSentence;
         })();
+        window.sendAllSentences = sendAllSentences;
+        // Push this chapter's compromise.js sentence list to Kotlin once the DOM is ready
+        setTimeout(sendAllSentences, 500);
             </script>
         </body>
         </html>
@@ -660,6 +690,11 @@ private fun ChapterWebView(
                 fun onReachedEndOfChapter() {
                     currentOnReachedEndOfChapter.value()
                 }
+
+                @JavascriptInterface
+                fun onChapterSentencesFound(json: String) {
+                    currentOnChapterSentences.value(json)
+                }
             }
             WebView(context).apply {
                 addJavascriptInterface(jsInterface, "ParagraphBridge")
@@ -692,6 +727,12 @@ private fun ChapterWebView(
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         val v = view ?: return
+
+                        // Safety net: push the chapter sentence list again once the page
+                        // fully loaded (covers the restore-scroll path)
+                        v.postDelayed({
+                            v.evaluateJavascript("window.sendAllSentences && window.sendAllSentences()", null)
+                        }, 1500)
 
                         if (restoreParagraphText.isNotEmpty()) {
                             val escapedText = restoreParagraphText
