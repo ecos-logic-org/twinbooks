@@ -68,7 +68,7 @@ class AlignmentRepository @Inject constructor(
     suspend fun alignChapter(
         leftSentences: List<String>,
         rightSentences: List<String>,
-        method: String = "hungarian",
+        method: String = "dtw",
         similarityThreshold: Float = 0.3f,
         gapPenalty: Float = -0.15f,
     ): ChapterAlignResponse? {

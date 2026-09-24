@@ -362,7 +362,7 @@ class ReaderViewModel @Inject constructor(
             val response = alignmentRepository.alignChapter(
                 leftSentences = extractAllSentences(leftChapter.htmlContent),
                 rightSentences = extractAllSentences(rightChapter.htmlContent),
-                method = "hungarian",
+                method = "dtw",
                 similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
             )
             
@@ -603,7 +603,7 @@ class ReaderViewModel @Inject constructor(
             val serverResponse = alignmentRepository.alignChapter(
                 leftSentences = extractAllSentences(leftChapter.htmlContent),
                 rightSentences = extractAllSentences(rightChapter.htmlContent),
-                method = "hungarian",
+                method = "dtw",
                 similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
             )
             
