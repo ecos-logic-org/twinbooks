@@ -220,6 +220,13 @@ enum class ServerStatus {
 data class TranslateRequest(
     val sentences: List<String>,
 
+    /** Neighbouring paragraphs, only read (not translated) to resolve grammatical gender */
+    @Json(name = "context_before")
+    val contextBefore: List<String>? = null,
+
+    @Json(name = "context_after")
+    val contextAfter: List<String>? = null,
+
     @Json(name = "source_lang")
     val sourceLang: String = "en",
 

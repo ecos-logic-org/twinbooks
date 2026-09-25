@@ -51,6 +51,11 @@ import javax.inject.Inject
 private const val SERVER_TRANSLATION_CACHE_SIZE = 20
 /** Back-off before trying the server translator again after a failure */
 private const val SERVER_TRANSLATION_RETRY_MS = 5 * 60_000L
+/** Paragraphs sent around the translated one so the server resolves grammatical gender */
+private const val TRANSLATION_CONTEXT_BEFORE = 3
+private const val TRANSLATION_CONTEXT_AFTER = 1
+/** How far to look for non-empty neighbours (headings/images leave empty paragraphs) */
+private const val TRANSLATION_CONTEXT_SCAN = 10
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -1790,28 +1795,55 @@ class ReaderViewModel @Inject constructor(
      * Caller must ensure paragraph is highlighted.
      */
     private fun getSingleParagraphSentences(paraIdx: Int): List<String>? {
-        val currentState = _state.value
-        // Get the paragraph text from compromise.js list (joined) or HTML fallback
-        var paraText: String? = null
-        if (leftSentencesChapterIdx == currentState.leftPosition.chapterIndex) {
-            val sentences = leftChapterSentencesByPara.getOrNull(paraIdx)
-            if (sentences != null) {
-                paraText = sentences.joinToString(" ").trim()
-            }
-        }
-        if (paraText.isNullOrBlank()) {
-            val chapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex)
-                ?: return null
-            val paragraphs = extractParagraphs(chapter.htmlContent)
-            paraText = paragraphs.getOrNull(paraIdx)
-        }
-        if (paraText.isNullOrBlank()) return null
+        val paraText = getSingleParagraphText(paraIdx, ::currentLeftChapterParagraphs) ?: return null
 
         // Use our own sentence splitter (regex-based) for correct boundaries
-        val sentences = extractSentences(paraText!!).filter { it.trim().isNotBlank() }
+        val sentences = extractSentences(paraText).filter { it.trim().isNotBlank() }
         if (sentences.isEmpty()) return null
         Log.d("SingleBook", "Paragraph $paraIdx split into ${sentences.size} sentences (extractSentences)")
         return sentences
+    }
+
+    /** Paragraphs of the current left chapter parsed from its HTML (fallback when compromise.js has none). */
+    private fun currentLeftChapterParagraphs(): List<String>? {
+        val currentState = _state.value
+        val chapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex)
+            ?: return null
+        return extractParagraphs(chapter.htmlContent)
+    }
+
+    /**
+     * Text of paragraph [paraIdx] from the compromise.js list (joined) or, failing that,
+     * from [htmlParagraphs]. Null when the paragraph doesn't exist or is blank.
+     */
+    private fun getSingleParagraphText(paraIdx: Int, htmlParagraphs: () -> List<String>?): String? {
+        if (paraIdx < 0) return null
+        if (leftSentencesChapterIdx == _state.value.leftPosition.chapterIndex) {
+            leftChapterSentencesByPara.getOrNull(paraIdx)
+                ?.joinToString(" ")?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+        }
+        return htmlParagraphs()?.getOrNull(paraIdx)?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Non-empty paragraphs around [paraIdx] (up to [TRANSLATION_CONTEXT_BEFORE] before, in
+     * reading order, and [TRANSLATION_CONTEXT_AFTER] after) for the server translator.
+     */
+    private fun singleParagraphContext(paraIdx: Int): Pair<List<String>, List<String>> {
+        val htmlParagraphs by lazy { currentLeftChapterParagraphs() }
+        fun textAt(i: Int) = getSingleParagraphText(i) { htmlParagraphs }
+        val before = (paraIdx - 1 downTo maxOf(0, paraIdx - TRANSLATION_CONTEXT_SCAN)).asSequence()
+            .mapNotNull(::textAt)
+            .take(TRANSLATION_CONTEXT_BEFORE)
+            .toList()
+            .reversed()
+        val after = (paraIdx + 1..paraIdx + TRANSLATION_CONTEXT_SCAN).asSequence()
+            .mapNotNull(::textAt)
+            .take(TRANSLATION_CONTEXT_AFTER)
+            .toList()
+        return before to after
     }
 
     // Server translations of single-book paragraphs, in flight or finished, so the
@@ -1835,9 +1867,13 @@ class ReaderViewModel @Inject constructor(
         if (serverStatus.value == ServerStatus.OFFLINE || serverStatus.value == ServerStatus.UNAUTHORIZED) return null
         if (System.currentTimeMillis() < serverTranslationRetryAt) return null
 
+        // Neighbouring paragraphs let the server pick the right grammatical gender.
+        // Captured now: the chapter may change before the request runs.
+        val (contextBefore, contextAfter) = singleParagraphContext(paraIdx)
+
         // Lazy so it's in the map before it runs: a failure removes its own entry
         val deferred = viewModelScope.async(start = CoroutineStart.LAZY) {
-            val result = alignmentRepository.translateParagraph(enSentences)
+            val result = alignmentRepository.translateParagraph(enSentences, contextBefore, contextAfter)
                 ?.map { it.replace("\n", " ").replace("\r", " ").trim() }
             if (result == null) {
                 serverTranslations.remove(key)

@@ -128,9 +128,19 @@ class AlignmentRepository @Inject constructor(
      * Translate one paragraph on the server, sentence by sentence.
      * Returns exactly one translation per sentence, or null when the server is
      * unavailable (callers fall back to on-device ML Kit).
+     * [contextBefore]/[contextAfter] are neighbouring paragraphs the server only reads
+     * to pick the right grammatical gender (e.g. "cansada" vs "cansado").
      */
-    suspend fun translateParagraph(sentences: List<String>): List<String>? {
-        val request = TranslateRequest(sentences = sentences)
+    suspend fun translateParagraph(
+        sentences: List<String>,
+        contextBefore: List<String> = emptyList(),
+        contextAfter: List<String> = emptyList(),
+    ): List<String>? {
+        val request = TranslateRequest(
+            sentences = sentences,
+            contextBefore = contextBefore.ifEmpty { null },
+            contextAfter = contextAfter.ifEmpty { null },
+        )
         return try {
             val response = apiService.translate(request)
             _status.value = when {
