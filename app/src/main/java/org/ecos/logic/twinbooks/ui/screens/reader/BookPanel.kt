@@ -74,11 +74,16 @@ fun BookPanel(
     onReachedEndOfChapter: () -> Unit = {},
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
+    requestChapterSentencesTrigger: Int = 0,
     highlightSentenceIndex: Int = -1, // For right book: highlight specific sentence during TTS
     onChapterSentences: (chapterIndex: Int, sentencesJson: String) -> Unit = { _, _ -> },
     inlineTranslationTrigger: Int = 0,
     inlineTranslationSentenceIdx: Int = -1,
-    inlineTranslationText: String = ""
+    inlineTranslationText: String = "",
+    highlightTranslatedTrigger: Int = 0,
+    highlightTranslatedText: String = "",
+    highlightEnglishTrigger: Int = 0,
+    highlightEnglishText: String = ""
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -117,11 +122,16 @@ fun BookPanel(
                     scrollToParagraphIndex = scrollToParagraphIndex,
                     ttsRefreshTrigger = ttsRefreshTrigger,
                     ttsScrollToNextParagraphTrigger = ttsScrollToNextParagraphTrigger,
+                    requestChapterSentencesTrigger = requestChapterSentencesTrigger,
                     // Bind the sentence list push to this panel's current chapter
                     onChapterSentences = { json -> onChapterSentences(position.chapterIndex, json) },
                     inlineTranslationTrigger = inlineTranslationTrigger,
                     inlineTranslationSentenceIdx = inlineTranslationSentenceIdx,
-                    inlineTranslationText = inlineTranslationText
+                    inlineTranslationText = inlineTranslationText,
+                    highlightTranslatedTrigger = highlightTranslatedTrigger,
+                    highlightTranslatedText = highlightTranslatedText,
+                    highlightEnglishTrigger = highlightEnglishTrigger,
+                    highlightEnglishText = highlightEnglishText
                 )
             }
         }
@@ -179,10 +189,15 @@ private fun ChapterWebView(
     scrollToParagraphIndex: Int? = null,
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
+    requestChapterSentencesTrigger: Int = 0,
     onChapterSentences: (sentencesJson: String) -> Unit = {},
     inlineTranslationTrigger: Int = 0,
     inlineTranslationSentenceIdx: Int = -1,
-    inlineTranslationText: String = ""
+    inlineTranslationText: String = "",
+    highlightTranslatedTrigger: Int = 0,
+    highlightTranslatedText: String = "",
+    highlightEnglishTrigger: Int = 0,
+    highlightEnglishText: String = ""
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -207,6 +222,9 @@ private fun ChapterWebView(
     var lastAppliedTtsScrollToNext by remember { mutableIntStateOf(0) }
     var lastAppliedHighlightSentenceIndex by remember { mutableIntStateOf(-1) }
     var lastAppliedInlineTranslation by remember { mutableIntStateOf(0) }
+    var lastAppliedHighlightTranslated by remember { mutableIntStateOf(0) }
+    var lastAppliedRequestChapterSentences by remember { mutableIntStateOf(0) }
+    var lastAppliedHighlightEnglish by remember { mutableIntStateOf(0) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -496,6 +514,62 @@ private fun ChapterWebView(
                 div.textContent = text;
                 paragraph.parentNode.insertBefore(div, paragraph.nextSibling);
                 return true;
+            }
+
+            // Highlight a specific sentence inside the auto-translation div (single-book mode).
+            // The div is the next sibling of the highlighted paragraph.
+            function highlightTranslatedSentence(sentenceText) {
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph || !paragraph.nextElementSibling) return false;
+                var div = paragraph.nextElementSibling;
+                if (!div.classList || !div.classList.contains('auto-translation-para')) return false;
+
+                clearSentenceHighlight();
+
+                var fullText = div.textContent;
+                var start = fullText.indexOf(sentenceText);
+                if (start === -1) start = fullText.indexOf(sentenceText.trim());
+                if (start === -1) return false;
+
+                try {
+                    var range = document.createRange();
+                    range.setStart(div.firstChild, start);
+                    range.setEnd(div.firstChild, start + sentenceText.length);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            // Highlight a specific sentence in the ENGLISH paragraph (single-book mode).
+            // Uses exact text search (like highlightTranslatedSentence) so it matches
+            // our Kotlin-side sentence splitting (extractSentences), not compromise.js.
+            function highlightEnglishSentence(sentenceText) {
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph) return false;
+
+                clearSentenceHighlight();
+
+                var fullText = paragraph.textContent;
+                var start = fullText.indexOf(sentenceText);
+                if (start === -1) start = fullText.indexOf(sentenceText.trim());
+                if (start === -1) return false;
+
+                try {
+                    var range = document.createRange();
+                    range.setStart(paragraph.firstChild, start);
+                    range.setEnd(paragraph.firstChild, start + sentenceText.length);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    range.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return true;
+                } catch (e) {
+                    return false;
+                }
             }
 
             // Collect the compromise.js sentence list for every paragraph of this chapter
@@ -925,6 +999,38 @@ private fun ChapterWebView(
                 webView.evaluateJavascript(
                     "insertParagraphTranslation('$escapedTranslation')", null
                 )
+            }
+
+            // Highlight a sentence inside the translation div (single-book mode).
+            if (highlightTranslatedTrigger != lastAppliedHighlightTranslated && highlightTranslatedText.isNotBlank()) {
+                lastAppliedHighlightTranslated = highlightTranslatedTrigger
+                val escapedText = highlightTranslatedText
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", " ")
+                    .replace("\r", "")
+                webView.evaluateJavascript(
+                    "highlightTranslatedSentence('$escapedText')", null
+                )
+            }
+
+            // Highlight a sentence in the ENGLISH paragraph (single-book mode, exact text match).
+            if (highlightEnglishTrigger != lastAppliedHighlightEnglish && highlightEnglishText.isNotBlank()) {
+                lastAppliedHighlightEnglish = highlightEnglishTrigger
+                val escapedText = highlightEnglishText
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", " ")
+                    .replace("\r", "")
+                webView.evaluateJavascript(
+                    "highlightEnglishSentence('$escapedText')", null
+                )
+            }
+
+            // Request chapter sentences from compromise.js (re-send)
+            if (requestChapterSentencesTrigger != lastAppliedRequestChapterSentences) {
+                lastAppliedRequestChapterSentences = requestChapterSentencesTrigger
+                webView.evaluateJavascript("window.sendAllSentences && window.sendAllSentences()", null)
             }
 
             if (ttsScrollToNextParagraphTrigger != lastAppliedTtsScrollToNext) {

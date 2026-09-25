@@ -41,6 +41,8 @@ data class ReadingState(
     val ttsTimeLimitMinutes: Int = 0,
     val ttsRemainingSeconds: Long = 0L,
     val ttsScrollToNextParagraphTrigger: Int = 0,
+    // Trigger to request chapter sentences from WebView (compromise.js)
+    val requestChapterSentencesTrigger: Int = 0,
     val isBottomBarVisible: Boolean = false,
     val ttsBilingualMode: TtsBilingualMode = TtsBilingualMode.OFF,
     val ttsSpeed: Float = 1.0f,
@@ -53,6 +55,12 @@ data class ReadingState(
     val inlineTranslationTrigger: Int = 0,
     val inlineTranslationSentenceIdx: Int = -1,
     val inlineTranslationText: String = "",
+    // Highlight a sentence INSIDE the inserted translation block (bump trigger)
+    val highlightTranslatedTrigger: Int = 0,
+    val highlightTranslatedText: String = "",
+    // Highlight a sentence in the ENGLISH paragraph (single-book mode, uses exact text match)
+    val highlightEnglishTrigger: Int = 0,
+    val highlightEnglishText: String = "",
     // Sync anchor points: set when user manually scrolls right book
     // anchorRight = right paragraph index at the moment of manual scroll
     // anchorLeft = left paragraph index at the moment of manual scroll

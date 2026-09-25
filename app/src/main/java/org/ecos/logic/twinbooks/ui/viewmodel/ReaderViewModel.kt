@@ -1025,9 +1025,9 @@ class ReaderViewModel @Inject constructor(
             val isEnglishUtterance = utteranceId?.startsWith("sentence_") == true && !utteranceId.startsWith("sentence_es_")
             val isSpanishUtterance = utteranceId?.startsWith("sentence_es_") == true
 
-            // Single-book mode: paragraph-level state machine (see speakSingleParagraph)
+            // Single-book mode: sentence-level state machine (see speakSingleParagraph)
             if (_state.value.isSingleBookMode) {
-                onSingleParagraphUtteranceComplete(isEnglishUtterance, isSpanishUtterance)
+                onSingleParagraphUtteranceComplete()
                 return@launch
             }
 
@@ -1240,35 +1240,55 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    // --- Single-book mode: paragraph-level TTS -------------------------------------
-    // The paragraph is the minimum unit: speak the English paragraph, then its ML Kit
-    // translation (inserted inline below the paragraph), and in EN↔ES mode the English
-    // paragraph once more, then advance to the next paragraph.
+    // --- Single-book mode: sentence-level TTS within paragraph ---------------------
+    // The paragraph is the translation unit (ML Kit gets full paragraph for context).
+    // TTS reads sentence by sentence: EN1 → ES1 → EN2 → ES2... (mode dependent),
+    // using compromise.js sentence splitting from the WebView for accurate boundaries.
+    // Translation is inserted inline below each paragraph as a sibling div.
 
     /**
-     * Paragraph text for the TTS, taken from the WebView's compromise.js list (same
-     * index space as the reading-zone highlight). Sentences are joined back into a
-     * paragraph. Falls back to chapter HTML when the list for this chapter hasn't
-     * arrived yet. Returns null for empty/unavailable paragraphs.
+     * Get English sentences for a paragraph using our own sentence splitter (extractSentences)
+     * on the paragraph text. This ensures correct sentence boundaries matching ML Kit's
+     * translation splitting, unlike compromise.js which over-splits.
+     * Caller must ensure paragraph is highlighted.
      */
-    private fun getSingleParagraphText(paraIdx: Int): String? {
+    private fun getSingleParagraphSentences(paraIdx: Int): List<String>? {
         val currentState = _state.value
+        // Get the paragraph text from compromise.js list (joined) or HTML fallback
+        var paraText: String? = null
         if (leftSentencesChapterIdx == currentState.leftPosition.chapterIndex) {
             val sentences = leftChapterSentencesByPara.getOrNull(paraIdx)
             if (sentences != null) {
-                return sentences.joinToString(" ").trim().ifEmpty { null }
+                paraText = sentences.joinToString(" ").trim()
             }
         }
-        val chapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex)
-            ?: return null
-        return extractParagraphs(chapter.htmlContent).getOrNull(paraIdx)
+        if (paraText.isNullOrBlank()) {
+            val chapter = currentState.leftBook?.chapters?.getOrNull(currentState.leftPosition.chapterIndex)
+                ?: return null
+            val paragraphs = extractParagraphs(chapter.htmlContent)
+            paraText = paragraphs.getOrNull(paraIdx)
+        }
+        if (paraText.isNullOrBlank()) return null
+
+        // Use our own sentence splitter (regex-based) for correct boundaries
+        val sentences = extractSentences(paraText!!).filter { it.trim().isNotBlank() }
+        if (sentences.isEmpty()) return null
+        Log.d("SingleBook", "Paragraph $paraIdx split into ${sentences.size} sentences (extractSentences)")
+        return sentences
+    }
+
+    /**
+     * Split Spanish text into sentences (simple regex, good enough for ML Kit output).
+     */
+    private fun splitSpanishSentences(text: String): List<String> {
+        return extractSentences(text)
     }
 
     /** Start (or resume after pause) the paragraph cycle on the current paragraph. */
     private suspend fun speakSingleParagraph() {
         if (!_state.value.isTtsPlaying) return
 
-        // The WebView highlights a paragraph shortly after load/scroll — wait for it
+        // Wait for WebView to highlight a paragraph
         var waited = 0
         while (_state.value.isTtsPlaying && _state.value.leftParagraphIndex < 0 && waited < 25) {
             delay(100)
@@ -1283,28 +1303,147 @@ class ReaderViewModel @Inject constructor(
             return
         }
         ttsExpectedParagraphIndex = paraIdx
-        bilingualPhase = 0
 
-        val text = getSingleParagraphText(paraIdx)
-        if (text.isNullOrBlank()) {
+        // Get English sentences for this paragraph using our own sentence splitter
+        val enSentences = getSingleParagraphSentences(paraIdx)
+        if (enSentences == null || enSentences.isEmpty()) {
+            Log.d("SingleBook", "Paragraph $paraIdx has no sentences, advancing")
             advanceSingleParagraph()
             return
         }
-        lastSpokenEnglishText = text
-        Log.d("SingleBook", "Reading paragraph $paraIdx (mode=${_state.value.ttsBilingualMode})")
 
-        if (_state.value.ttsBilingualMode == TtsBilingualMode.ES_TO_EN) {
-            // ES first: the translation IS the first thing to speak
-            val es = translationManager.translate(text)
-            if (es == text) Log.w("SingleBook", "ML Kit translation unavailable for paragraph $paraIdx")
-            if (_state.value.autoTranslationEnabled && es.isNotBlank() && es != text) {
-                pushInlineTranslation(paraIdx, es)
+        // Translate the full paragraph (better ML Kit context)
+        val paraText = enSentences.joinToString(" ")
+        lastSpokenEnglishText = paraText
+        Log.d("SingleBook", "Reading paragraph $paraIdx (${enSentences.size} sentences, mode=${_state.value.ttsBilingualMode})")
+
+        // Translate for ES modes and/or auto-translation display
+        var esParagraph: String? = null
+        val mode = _state.value.ttsBilingualMode
+        val needsEsSpeech = mode != TtsBilingualMode.OFF
+        val needsEsDisplay = _state.value.autoTranslationEnabled
+
+        if (needsEsSpeech || needsEsDisplay) {
+            esParagraph = translationManager.translate(paraText)
+            if (esParagraph == paraText) {
+                Log.w("SingleBook", "ML Kit translation unavailable for paragraph $paraIdx")
+                esParagraph = null
+            } else {
+                // Normalize newlines for consistent matching
+                esParagraph = esParagraph.replace("\n", " ").replace("\r", " ").trim()
             }
-            if (!_state.value.isTtsPlaying) return
-            ttsManager.speakSpanish(es, paraIdx)
-        } else {
-            ttsManager.speak(text, paraIdx, _state.value.ttsSpeed)
         }
+
+        // Split Spanish translation into sentences
+        val esSentences = esParagraph?.let { splitSpanishSentences(it) } ?: emptyList()
+
+        // Insert translation div at paragraph start (if enabled and available)
+        if (needsEsDisplay && esParagraph != null) {
+            pushInlineTranslation(paraIdx, esParagraph)
+        }
+
+        // Build the utterance sequence based on mode
+        val utterances = buildSingleBookUtteranceSequence(
+            enSentences = enSentences,
+            esSentences = esSentences,
+            mode = mode
+        )
+        singleBookUtterances = utterances
+        singleBookUtteranceIndex = 0
+        singleBookEnSentences = enSentences
+        singleBookEsSentences = esSentences
+
+        // Start the first utterance
+        speakNextSingleBookUtterance()
+    }
+
+    /**
+     * Build the sequence of utterances for single-book mode.
+     * Each utterance is a pair: (language, sentenceIndex) where language: 0=EN, 1=ES
+     */
+    private fun buildSingleBookUtteranceSequence(
+        enSentences: List<String>,
+        esSentences: List<String>,
+        mode: TtsBilingualMode
+    ): List<Pair<Int, Int>> {
+        val seq = mutableListOf<Pair<Int, Int>>()
+        val maxIdx = maxOf(enSentences.size, esSentences.size)
+
+        when (mode) {
+            TtsBilingualMode.OFF -> {
+                for (i in enSentences.indices) seq.add(0 to i)
+            }
+            TtsBilingualMode.EN_TO_ES -> {
+                for (i in 0 until maxIdx) {
+                    if (i < enSentences.size) seq.add(0 to i)
+                    if (i < esSentences.size) seq.add(1 to i)
+                }
+            }
+            TtsBilingualMode.ES_TO_EN -> {
+                for (i in 0 until maxIdx) {
+                    if (i < esSentences.size) seq.add(1 to i)
+                    if (i < enSentences.size) seq.add(0 to i)
+                }
+            }
+            TtsBilingualMode.EN_ES_EN -> {
+                // Each sentence: EN -> ES -> EN (repeat)
+                for (i in enSentences.indices) {
+                    seq.add(0 to i)
+                    if (i < esSentences.size) seq.add(1 to i)
+                    seq.add(0 to i) // repeat EN
+                }
+            }
+        }
+        return seq
+    }
+
+    /** Speak the next utterance in the single-book sequence. */
+    private fun speakNextSingleBookUtterance() {
+        if (!_state.value.isTtsPlaying) return
+        if (singleBookUtteranceIndex >= singleBookUtterances.size) {
+            advanceSingleParagraph()
+            return
+        }
+
+        val (lang, sentIdx) = singleBookUtterances[singleBookUtteranceIndex]
+
+        if (lang == 0) {
+            // Speak English sentence
+            if (sentIdx < singleBookEnSentences.size) {
+                val text = singleBookEnSentences[sentIdx]
+                // Highlight in English paragraph using exact text match (not compromise.js index)
+                _state.update { it.copy(highlightEnglishTrigger = it.highlightEnglishTrigger + 1) }
+                _state.update { it.copy(highlightEnglishText = text) }
+                // Keep leftSentenceIndex at -1 to avoid compromise.js highlighting
+                _state.update { it.copy(leftSentenceIndex = -1) }
+                ttsManager.speak(text, sentIdx, _state.value.ttsSpeed)
+            } else {
+                // Fallback: skip to next
+                singleBookUtteranceIndex++
+                speakNextSingleBookUtterance()
+            }
+        } else {
+            // Speak Spanish sentence
+            if (sentIdx < singleBookEsSentences.size) {
+                val text = singleBookEsSentences[sentIdx]
+                // Clear English highlight, highlight in translation div
+                _state.update { it.copy(highlightEnglishText = "") }
+                _state.update { it.copy(highlightTranslatedTrigger = it.highlightTranslatedTrigger + 1) }
+                _state.update { it.copy(highlightTranslatedText = text) }
+                ttsManager.speakSpanish(text, sentIdx)
+            } else {
+                // Fallback: skip to next
+                singleBookUtteranceIndex++
+                speakNextSingleBookUtterance()
+            }
+        }
+    }
+
+    /** Called when an utterance finishes in single-book mode. */
+    private fun onSingleParagraphUtteranceComplete() {
+        if (!_state.value.isTtsPlaying) return
+        singleBookUtteranceIndex++
+        speakNextSingleBookUtterance()
     }
 
     /** Ask the WebView to scroll to the next paragraph and keep the cycle running. */
@@ -1312,13 +1451,9 @@ class ReaderViewModel @Inject constructor(
         if (!_state.value.isTtsPlaying) return
         val fromIdx = _state.value.leftParagraphIndex
         ttsExpectedParagraphIndex = fromIdx + 1
-        bilingualPhase = 0
         _state.update { it.copy(ttsScrollToNextParagraphTrigger = it.ttsScrollToNextParagraphTrigger + 1) }
 
         viewModelScope.launch {
-            // The WebView moves the highlight right away and confirms via onParagraphFound.
-            // At the end of the chapter it fires onReachedEndOfChapter instead and the new
-            // chapter reports paragraph 0 — both cases exit this wait loop.
             var waited = 0
             while (_state.value.isTtsPlaying &&
                 _state.value.leftParagraphIndex == fromIdx &&
@@ -1333,72 +1468,17 @@ class ReaderViewModel @Inject constructor(
                 stopTts()
                 return@launch
             }
-            // Single-book invariant: no sentence highlight in this mode (advanceTtsToNextChapter
-            // sets leftSentenceIndex = 0 on chapter change; keep it at -1)
-            _state.update { it.copy(leftSentenceIndex = -1) }
+            // Reset sentence index and clear translation highlight
+            _state.update { it.copy(leftSentenceIndex = -1, highlightTranslatedText = "", highlightEnglishText = "") }
             speakSingleParagraph()
         }
     }
 
-    /**
-     * One utterance finished in single-book mode: run the next phase of the cycle
-     * (translate → speak ES → repeat EN) or advance to the next paragraph.
-     */
-    private fun onSingleParagraphUtteranceComplete(isEnglish: Boolean, isSpanish: Boolean) {
-        val mode = _state.value.ttsBilingualMode
-        val paraText = lastSpokenEnglishText
-        val paraIdx = ttsExpectedParagraphIndex
-
-        when (mode) {
-            TtsBilingualMode.OFF -> {
-                // No spoken translation: show it inline, then move on
-                viewModelScope.launch {
-                    insertParagraphTranslationIfEnabled(paraText, paraIdx)
-                    advanceSingleParagraph()
-                }
-            }
-            TtsBilingualMode.EN_TO_ES, TtsBilingualMode.EN_ES_EN -> {
-                if (isEnglish && bilingualPhase == 0) {
-                    bilingualPhase = 1
-                    viewModelScope.launch {
-                        if (!_state.value.isTtsPlaying) return@launch
-                        val es = translationManager.translate(paraText)
-                        if (es == paraText) Log.w("SingleBook", "ML Kit translation unavailable for paragraph $paraIdx")
-                        if (_state.value.autoTranslationEnabled && es.isNotBlank() && es != paraText) {
-                            pushInlineTranslation(paraIdx, es)
-                        }
-                        if (!_state.value.isTtsPlaying) return@launch
-                        ttsManager.speakSpanish(es, paraIdx)
-                    }
-                } else if (mode == TtsBilingualMode.EN_ES_EN && isSpanish && bilingualPhase == 1) {
-                    bilingualPhase = 2
-                    if (!_state.value.isTtsPlaying) return
-                    ttsManager.speak(paraText, paraIdx, _state.value.ttsSpeed)
-                } else {
-                    // EN_TO_ES: ES phase done / EN_ES_EN: English repeat done → next paragraph
-                    advanceSingleParagraph()
-                }
-            }
-            TtsBilingualMode.ES_TO_EN -> {
-                if (isSpanish && bilingualPhase == 0) {
-                    bilingualPhase = 1
-                    if (!_state.value.isTtsPlaying) return
-                    ttsManager.speak(paraText, paraIdx, _state.value.ttsSpeed)
-                } else {
-                    advanceSingleParagraph()
-                }
-            }
-        }
-    }
-
-    private suspend fun insertParagraphTranslationIfEnabled(englishText: String, paraIdx: Int) {
-        val s = _state.value
-        if (!s.isSingleBookMode || !s.autoTranslationEnabled || englishText.isBlank()) return
-        val es = translationManager.translate(englishText)
-        if (es.isNotBlank() && es != englishText) {
-            pushInlineTranslation(paraIdx, es)
-        }
-    }
+    // Mutable state for single-book sentence-level flow
+    private var singleBookUtterances: List<Pair<Int, Int>> = emptyList()
+    private var singleBookUtteranceIndex = 0
+    private var singleBookEnSentences: List<String> = emptyList()
+    private var singleBookEsSentences: List<String> = emptyList()
 
     /**
      * Advance both books to the next chapter simultaneously.

@@ -291,12 +291,17 @@ fun ReaderScreen(
                         scrollToParagraphIndex = scrollToLeftIndex,
                         ttsRefreshTrigger = viewModel.ttsRefreshTrigger,
                         ttsScrollToNextParagraphTrigger = state.ttsScrollToNextParagraphTrigger,
+                        requestChapterSentencesTrigger = state.requestChapterSentencesTrigger,
                         onChapterSentences = { chapter, json ->
                             viewModel.onLeftChapterSentences(chapter, json)
                         },
                         inlineTranslationTrigger = state.inlineTranslationTrigger,
                         inlineTranslationSentenceIdx = state.inlineTranslationSentenceIdx,
                         inlineTranslationText = state.inlineTranslationText,
+                        highlightTranslatedTrigger = state.highlightTranslatedTrigger,
+                        highlightTranslatedText = state.highlightTranslatedText,
+                        highlightEnglishTrigger = state.highlightEnglishTrigger,
+                        highlightEnglishText = state.highlightEnglishText,
                         onReachedEndOfChapter = {
                             viewModel.advanceTtsToNextChapter()
                         }
@@ -357,7 +362,7 @@ fun ReaderScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     if (state.isSingleBookMode) {
                         // Single-book mode: no sync (there is no second book).
-                        // Automatic-translation toggle + back-to-two-books button instead.
+                        // Automatic-translation toggle only.
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             // Auto-translation toggle
                             Box(
@@ -375,22 +380,6 @@ fun ReaderScreen(
                                     imageVector = Icons.Default.Translate,
                                     contentDescription = "Toggle automatic translation",
                                     tint = if (state.autoTranslationEnabled) Color(0xFF80CBC4) else Color(0xFFB0B0B0),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                            // Back to two-book mode
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
-                                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
-                                    .clickable { viewModel.exitSingleBookMode() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ViewColumn,
-                                    contentDescription = "Back to two books",
-                                    tint = Color(0xFFB0B0B0),
                                     modifier = Modifier.size(18.dp)
                                 )
                             }

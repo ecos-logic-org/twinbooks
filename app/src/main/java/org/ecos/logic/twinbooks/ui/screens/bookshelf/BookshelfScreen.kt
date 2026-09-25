@@ -12,6 +12,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.LinearProgressIndicator
@@ -181,8 +184,24 @@ fun BookshelfScreen(
                 color = Color.White,
                 fontWeight = FontWeight.Bold
             )
-            Button(onClick = { showNewPairDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "New pair", tint = Color.White)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Pair EN/ES button
+                Button(onClick = { showNewPairDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Nuevo par EN/ES", tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Par EN/ES", fontSize = 13.sp)
+                }
+                // Single book button (auto-translation)
+                Button(
+                    onClick = { singleBookLauncher.launch(arrayOf("application/epub+zip")) },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF00695C)
+                    )
+                ) {
+                    Icon(Icons.Default.Translate, contentDescription = "Libro único", tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Libro único", fontSize = 13.sp)
+                }
             }
         }
 
@@ -226,7 +245,9 @@ fun BookshelfScreen(
             }
         } else {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 sessions.forEach { sessionWithCover ->
@@ -464,7 +485,11 @@ private fun NewPairDialog(
         onDismissRequest = onDismiss,
         title = { Text("Nuevo par de libros") },
         text = {
-            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(vertical = 8.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     text = "Selecciona un libro para cada lado:",
                     color = Color(0xFFB0B0B0),
@@ -575,35 +600,50 @@ private fun NewPairDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFF123B36), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFF26A69A), RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0D2B27), RoundedCornerShape(12.dp))
+                        .border(1.5.dp, Color(0xFF26A69A), RoundedCornerShape(12.dp))
                         .padding(16.dp)
                         .clickable { onSingleBookClick() },
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Translate,
-                            contentDescription = "Single book",
-                            tint = Color(0xFF80CBC4),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(Color(0xFF004D40), RoundedCornerShape(10.dp))
+                                .padding(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Translate,
+                                contentDescription = "Modo libro único",
+                                tint = Color(0xFF80CBC4),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
-                                text = "Un solo libro",
+                                text = "Libro único (Inglés con traducción automática)",
                                 color = Color(0xFF80CBC4),
-                                fontSize = 14.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Traducción automática al castellano, en pantalla completa",
-                                color = Color(0xFF888888),
-                                fontSize = 12.sp
+                                text = "Un solo EPUB a pantalla completa. Traducción al castellano por párrafos con ML Kit on-device. TTS bilingüe frase a frase (EN ↔ ES).",
+                                color = Color(0xFFB2DFDB),
+                                fontSize = 13.sp
                             )
                         }
+                        Icon(
+                            imageVector = Icons.Filled.NavigateNext,
+                            contentDescription = "",
+                            tint = Color(0xFF4DB6AC),
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
                 }
             }
