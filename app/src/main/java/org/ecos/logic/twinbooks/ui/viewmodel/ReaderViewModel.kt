@@ -26,6 +26,7 @@ import org.ecos.logic.twinbooks.domain.model.ReadingState
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 import org.ecos.logic.twinbooks.embedding.EmbeddingManager
 import org.ecos.logic.twinbooks.translation.TranslationManager
+import org.ecos.logic.twinbooks.text.SentenceSplitter
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
@@ -665,15 +666,11 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
-     * Extract sentences from text (simple regex).
-     * Cold fallback only: used when the WebView (compromise.js) sentence list isn't ready yet.
+     * Extract sentences from text (rule-based, EN/ES, see [SentenceSplitter]).
+     * Two-book mode: cold fallback when the WebView (compromise.js) list isn't ready yet.
+     * Single-book mode: the splitter for both the English paragraph and its translation.
      */
-    private fun extractSentences(text: String): List<String> {
-        return text.split(Regex("(?<=[.!?])\\s+"))
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .toList()
-    }
+    private fun extractSentences(text: String): List<String> = SentenceSplitter.split(text)
 
     /**
      * Find the best matching Spanish sentence from the synchronized right paragraph
@@ -1248,8 +1245,8 @@ class ReaderViewModel @Inject constructor(
 
     /**
      * Get English sentences for a paragraph using our own sentence splitter (extractSentences)
-     * on the paragraph text. This ensures correct sentence boundaries matching ML Kit's
-     * translation splitting, unlike compromise.js which over-splits.
+     * on the paragraph text. The same splitter runs on the ML Kit translation, so boundaries
+     * are comparable (compromise.js over-splits).
      * Caller must ensure paragraph is highlighted.
      */
     private fun getSingleParagraphSentences(paraIdx: Int): List<String>? {
@@ -1275,13 +1272,6 @@ class ReaderViewModel @Inject constructor(
         if (sentences.isEmpty()) return null
         Log.d("SingleBook", "Paragraph $paraIdx split into ${sentences.size} sentences (extractSentences)")
         return sentences
-    }
-
-    /**
-     * Split Spanish text into sentences (simple regex, good enough for ML Kit output).
-     */
-    private fun splitSpanishSentences(text: String): List<String> {
-        return extractSentences(text)
     }
 
     /** Start (or resume after pause) the paragraph cycle on the current paragraph. */
@@ -1335,7 +1325,21 @@ class ReaderViewModel @Inject constructor(
         }
 
         // Split Spanish translation into sentences
-        val esSentences = esParagraph?.let { splitSpanishSentences(it) } ?: emptyList()
+        var esSentences = esParagraph?.let { extractSentences(it) } ?: emptyList()
+
+        // Sentence pairing is by position, so counts must match. When ML Kit merged or
+        // split sentences, translate this paragraph sentence by sentence for SPEECH only
+        // (less context, but EN[i] <-> ES[i] is guaranteed). The displayed translation
+        // stays the full-paragraph one.
+        if (needsEsSpeech && esParagraph != null && esSentences.size != enSentences.size) {
+            Log.d("SingleBook", "Paragraph $paraIdx: ${enSentences.size} EN vs ${esSentences.size} ES sentences, translating per sentence")
+            val perSentence = enSentences.map { translationManager.translate(it) }
+            if (perSentence != enSentences) { // translate() returns the input unchanged on failure
+                esSentences = perSentence.map { it.replace("\n", " ").replace("\r", " ").trim() }
+            } else {
+                Log.w("SingleBook", "Per-sentence translation failed for paragraph $paraIdx, keeping paragraph split")
+            }
+        }
 
         // Insert translation div at paragraph start (if enabled and available)
         if (needsEsDisplay && esParagraph != null) {
