@@ -2,6 +2,7 @@ package org.ecos.logic.twinbooks.ui.screens.reader
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Cloud
@@ -203,6 +204,25 @@ fun ReaderScreen(
             else -> return@LaunchedEffect
         }
         lastNotifiedServerStatus = serverStatus
+        message?.let { snackbarHostState.showSnackbar(it) }
+    }
+
+    // Same for the translation server in single-book mode (fallback: ML Kit on the device)
+    val translationLook = translationStatusLook(serverStatus, state.isServerTranslationFailing)
+    var lastNotifiedTranslationLabel by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(translationLook.third, state.isSingleBookMode) {
+        if (!state.isSingleBookMode || state.leftBook == null) return@LaunchedEffect
+        val label = translationLook.third
+        if (label == lastNotifiedTranslationLabel) return@LaunchedEffect
+        val wasFailing = lastNotifiedTranslationLabel != null &&
+            lastNotifiedTranslationLabel != TRANSLATION_OK_LABEL &&
+            lastNotifiedTranslationLabel != TRANSLATION_CHECKING_LABEL
+        val message = when (label) {
+            TRANSLATION_OK_LABEL -> if (wasFailing) "Servidor de traducción disponible de nuevo." else null
+            TRANSLATION_CHECKING_LABEL -> return@LaunchedEffect
+            else -> "$label. Se usa la traducción del dispositivo."
+        }
+        lastNotifiedTranslationLabel = label
         message?.let { snackbarHostState.showSnackbar(it) }
     }
 
@@ -448,6 +468,31 @@ fun ReaderScreen(
                                     tint = if (state.autoTranslationEnabled) Color(0xFF80CBC4) else Color(0xFFB0B0B0),
                                     modifier = Modifier.size(18.dp)
                                 )
+                            }
+                            // Translation server status (tap = check again and retry the server)
+                            val (translationIcon, translationTint, translationLabel) = translationLook
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                                    .border(1.dp, translationTint.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                    .clickable { viewModel.retryServerTranslation() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (state.isServerAligning) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = translationTint,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = translationIcon,
+                                        contentDescription = "$translationLabel. Toca para reintentar",
+                                        tint = translationTint,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -1195,6 +1240,21 @@ private fun ChapterPairingBanner(
             Text(text = "Ahora no", color = Color(0xFF9E9E9E), fontSize = 14.sp)
         }
     }
+}
+
+private const val TRANSLATION_OK_LABEL = "Servidor de traducción disponible"
+private const val TRANSLATION_CHECKING_LABEL = "Comprobando el servidor de traducción"
+
+/**
+ * Icon, colour and label for the translation server in single-book mode. [failing]: the
+ * server answers the health check but the last translation request failed.
+ */
+internal fun translationStatusLook(status: ServerStatus, failing: Boolean): Triple<ImageVector, Color, String> = when {
+    status == ServerStatus.OFFLINE -> Triple(Icons.Default.CloudOff, Color(0xFFEF5350), "Servidor de traducción no disponible")
+    status == ServerStatus.UNAUTHORIZED -> Triple(Icons.Default.Key, Color(0xFFFFA726), "Clave de API del servidor no válida")
+    failing -> Triple(Icons.Default.Warning, Color(0xFFFFA726), "El servidor de traducción está dando errores")
+    status == ServerStatus.ONLINE -> Triple(Icons.Default.Cloud, Color(0xFF66BB6A), TRANSLATION_OK_LABEL)
+    else -> Triple(Icons.Default.CloudSync, Color(0xFF9E9E9E), TRANSLATION_CHECKING_LABEL)
 }
 
 /** Icon, colour and label for the alignment server status. */

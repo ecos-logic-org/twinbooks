@@ -37,6 +37,13 @@ interface AlignmentApiService {
         @Path("jobId") jobId: String
     ): Response<AlignmentResult>
     
+    // --- Paragraph translation (sentence by sentence) ---
+
+    @POST("translate")
+    suspend fun translate(
+        @Body request: TranslateRequest
+    ): Response<TranslateResponse>
+
     // --- Health check ---
     
     @GET("align/health")

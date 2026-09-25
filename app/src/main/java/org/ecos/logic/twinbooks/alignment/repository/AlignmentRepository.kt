@@ -125,6 +125,40 @@ class AlignmentRepository @Inject constructor(
     }
     
     /**
+     * Translate one paragraph on the server, sentence by sentence.
+     * Returns exactly one translation per sentence, or null when the server is
+     * unavailable (callers fall back to on-device ML Kit).
+     */
+    suspend fun translateParagraph(sentences: List<String>): List<String>? {
+        val request = TranslateRequest(sentences = sentences)
+        return try {
+            val response = apiService.translate(request)
+            _status.value = when {
+                response.isSuccessful -> ServerStatus.ONLINE
+                response.code() == 401 || response.code() == 403 -> ServerStatus.UNAUTHORIZED
+                // 502: the translation backend failed, the server itself is up
+                response.code() == 502 -> ServerStatus.ONLINE
+                else -> ServerStatus.OFFLINE
+            }
+            val translations = response.body()?.translations
+            if (!response.isSuccessful || translations == null) {
+                Log.w("AlignmentRepository", "Translation HTTP ${response.code()}")
+                null
+            } else if (translations.size != sentences.size) {
+                Log.w("AlignmentRepository", "Translation returned ${translations.size} sentences for ${sentences.size}")
+                null
+            } else {
+                Log.d("AlignmentRepository", "Translated ${sentences.size} sentences in ${response.body()?.latencyMs}ms (cached=${response.body()?.cached})")
+                translations
+            }
+        } catch (e: Exception) {
+            Log.w("AlignmentRepository", "Translation failed: ${e.message}")
+            _status.value = ServerStatus.OFFLINE
+            null
+        }
+    }
+
+    /**
      * Submit full book pair for async alignment.
      */
     suspend fun submitBookAlignment(

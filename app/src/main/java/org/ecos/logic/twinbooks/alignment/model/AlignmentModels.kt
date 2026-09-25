@@ -212,3 +212,30 @@ enum class ServerStatus {
     /** Reachable but rejects our X-API-Key (missing or wrong key in secrets.properties) */
     UNAUTHORIZED
 }
+
+/**
+ * Request to translate one paragraph sentence by sentence (sync endpoint).
+ */
+@Serializable
+data class TranslateRequest(
+    val sentences: List<String>,
+
+    @Json(name = "source_lang")
+    val sourceLang: String = "en",
+
+    @Json(name = "target_lang")
+    val targetLang: String = "es",
+)
+
+/**
+ * Translation response: exactly one translation per source sentence, same order.
+ */
+@Serializable
+data class TranslateResponse(
+    val translations: List<String>,
+    val model: String,
+    val cached: Boolean,
+
+    @Json(name = "latency_ms")
+    val latencyMs: Int,
+)

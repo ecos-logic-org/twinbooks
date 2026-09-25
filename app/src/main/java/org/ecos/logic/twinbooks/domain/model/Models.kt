@@ -50,6 +50,8 @@ data class ReadingState(
     val ttsSpeed: Float = 1.0f,
     // Server alignment progress indicator
     val isServerAligning: Boolean = false,
+    // Single-book mode: the last server translation failed (ML Kit is being used meanwhile)
+    val isServerTranslationFailing: Boolean = false,
     // Local chapter alignment (ML Kit + lexical DP) progress: -1 = idle, 0..1 = translating
     val chapterAlignmentProgress: Float = -1f,
     // Bumped when a chapter alignment becomes available: re-sync the right panel

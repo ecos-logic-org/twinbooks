@@ -8,7 +8,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +46,11 @@ import org.ecos.logic.twinbooks.tts.PlaybackCommand
 import org.ecos.logic.twinbooks.tts.PlaybackInfo
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
+
+/** Single-book server translations kept in memory (current, next and a few recent paragraphs) */
+private const val SERVER_TRANSLATION_CACHE_SIZE = 20
+/** Back-off before trying the server translator again after a failure */
+private const val SERVER_TRANSLATION_RETRY_MS = 5 * 60_000L
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -695,22 +703,29 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
-     * Keeps [serverStatus] fresh while a pair is open (the server goes down now and then):
-     * every minute while it's down, every 5 minutes while it's up. When it comes back, the
-     * failure cache is dropped and the current chapter is asked to the server again.
+     * Keeps [serverStatus] fresh while a pair or a single book is open (the server goes down
+     * now and then): every minute while it's down, every 5 minutes while it's up. When it
+     * comes back, the failure cache is dropped and the current chapter is asked to the server
+     * again (single-book mode: the ML Kit back-off is dropped instead).
      */
     private fun startServerMonitor() {
         serverMonitorJob?.cancel()
         serverMonitorJob = viewModelScope.launch {
             while (true) {
                 val s = _state.value
-                if (s.rightBook != null && !s.isSingleBookMode) {
+                val usesServer = if (s.isSingleBookMode) s.leftBook != null else s.rightBook != null
+                if (usesServer) {
                     val before = serverStatus.value
                     alignmentRepository.checkHealth()
                     if (before != ServerStatus.ONLINE && serverStatus.value == ServerStatus.ONLINE) {
-                        Log.d("ServerStatus", "Alignment server is back")
-                        serverFailedKey = null
-                        if (!alignmentFromServer) retryServerAlignment()
+                        Log.d("ServerStatus", "Server is back")
+                        if (s.isSingleBookMode) {
+                            serverTranslationRetryAt = 0L
+                            _state.update { it.copy(isServerTranslationFailing = false) }
+                        } else {
+                            serverFailedKey = null
+                            if (!alignmentFromServer) retryServerAlignment()
+                        }
                     }
                 }
                 delay(if (serverStatus.value == ServerStatus.ONLINE) 5 * 60_000L else 60_000L)
@@ -1799,6 +1814,53 @@ class ReaderViewModel @Inject constructor(
         return sentences
     }
 
+    // Server translations of single-book paragraphs, in flight or finished, so the
+    // prefetch of the next paragraph and its playback share one request
+    private val serverTranslations = object : LinkedHashMap<String, Deferred<List<String>?>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Deferred<List<String>?>>?) =
+            size > SERVER_TRANSLATION_CACHE_SIZE
+    }
+    // After a failed request, use ML Kit for a while instead of retrying every paragraph
+    private var serverTranslationRetryAt = 0L
+
+    private fun serverTranslationKey(paraIdx: Int): String {
+        val s = _state.value
+        return "${s.leftBookUri}:${s.leftPosition.chapterIndex}:$paraIdx"
+    }
+
+    /** Server translation of [paraIdx] (started now or earlier), or null when the server can't be used. */
+    private fun serverTranslationAsync(paraIdx: Int, enSentences: List<String>): Deferred<List<String>?>? {
+        val key = serverTranslationKey(paraIdx)
+        serverTranslations[key]?.let { return it }
+        if (serverStatus.value == ServerStatus.OFFLINE || serverStatus.value == ServerStatus.UNAUTHORIZED) return null
+        if (System.currentTimeMillis() < serverTranslationRetryAt) return null
+
+        // Lazy so it's in the map before it runs: a failure removes its own entry
+        val deferred = viewModelScope.async(start = CoroutineStart.LAZY) {
+            val result = alignmentRepository.translateParagraph(enSentences)
+                ?.map { it.replace("\n", " ").replace("\r", " ").trim() }
+            if (result == null) {
+                serverTranslations.remove(key)
+                serverTranslationRetryAt = System.currentTimeMillis() + SERVER_TRANSLATION_RETRY_MS
+            }
+            _state.update { it.copy(isServerTranslationFailing = result == null) }
+            result
+        }
+        serverTranslations[key] = deferred
+        deferred.start()
+        return deferred
+    }
+
+    /** Status button in single-book mode: check the server again and drop the ML Kit back-off. */
+    fun retryServerTranslation() {
+        viewModelScope.launch {
+            _state.update { it.copy(isServerAligning = true) }
+            if (serverStatus.value != ServerStatus.UNAUTHORIZED) alignmentRepository.checkHealth()
+            serverTranslationRetryAt = 0L
+            _state.update { it.copy(isServerAligning = false, isServerTranslationFailing = false) }
+        }
+    }
+
     /** Start (or resume after pause) the paragraph cycle on the current paragraph. */
     private suspend fun speakSingleParagraph() {
         if (!_state.value.isTtsPlaying) return
@@ -1838,7 +1900,17 @@ class ReaderViewModel @Inject constructor(
         val needsEsSpeech = mode != TtsBilingualMode.OFF
         val needsEsDisplay = _state.value.autoTranslationEnabled
 
+        // Server translation first: better quality and exactly one ES sentence
+        // per EN sentence. ML Kit below is the fallback when the server is unavailable.
+        var serverSentences: List<String>? = null
         if (needsEsSpeech || needsEsDisplay) {
+            serverSentences = serverTranslationAsync(paraIdx, enSentences)?.await()
+            if (serverSentences != null) esParagraph = serverSentences.joinToString(" ")
+            // Keep the next paragraph ready so playback doesn't wait on the network
+            getSingleParagraphSentences(paraIdx + 1)?.let { serverTranslationAsync(paraIdx + 1, it) }
+        }
+
+        if ((needsEsSpeech || needsEsDisplay) && serverSentences == null) {
             esParagraph = translationManager.translate(paraText)
             if (esParagraph == paraText) {
                 Log.w("SingleBook", "ML Kit translation unavailable for paragraph $paraIdx")
@@ -1850,7 +1922,7 @@ class ReaderViewModel @Inject constructor(
         }
 
         // Split Spanish translation into sentences
-        var esSentences = esParagraph?.let { extractSentences(it) } ?: emptyList()
+        var esSentences = serverSentences ?: esParagraph?.let { extractSentences(it) } ?: emptyList()
 
         // Sentence pairing is by position, so counts must match. When ML Kit merged or
         // split sentences, translate this paragraph sentence by sentence for SPEECH only

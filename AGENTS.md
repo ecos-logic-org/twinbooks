@@ -22,8 +22,9 @@ Always run `./gradlew assembleDebug` after changes to verify compilation.
 - **DI**: Hilt (`@HiltAndroidApp`, `@AndroidEntryPoint`, `@HiltViewModel`)
 - **Persistence**: Room (DB version 8, migrations 1→2→…→8 in `TwinBooksDatabase.kt`)
 - **Reading modes**: dual (two EPUBs side by side) or **single-book mode** (one EPUB full
-  screen, Spanish side comes from on-device ML Kit translation rendered inline below each
-  paragraph; TTS unit is the PARAGRAPH: EN paragraph → translated ES paragraph → EN again
+  screen, Spanish side comes from the server's `POST translate` (server-side model, one ES sentence
+  per EN sentence, next paragraph prefetched) with on-device ML Kit as fallback, rendered inline
+  below each paragraph; TTS unit is the PARAGRAPH: EN paragraph → translated ES paragraph → EN again
   in EN↔ES mode; flag `isSingleBookMode` on the session, entry points: bookshelf
   new-session dialog and the reader's empty state)
 - **EPUB**: `epub4j-core` library, images embedded as base64 data URIs
