@@ -958,6 +958,9 @@ private fun ChapterWebView(
                 )
             }
 
+            // Consumed requests come back as null: forget the last target so jumping to the
+            // same paragraph again (e.g. -> after scrolling back by hand) is not ignored
+            if (scrollToParagraphIndex == null) lastAppliedScrollToIndex = null
             if (scrollToParagraphIndex != null && scrollToParagraphIndex != lastAppliedScrollToIndex) {
                 lastAppliedScrollToIndex = scrollToParagraphIndex
                 webView.evaluateJavascript(

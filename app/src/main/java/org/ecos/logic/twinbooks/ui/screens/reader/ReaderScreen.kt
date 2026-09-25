@@ -103,6 +103,8 @@ fun ReaderScreen(
     var scrollToLeftIndex by remember { mutableStateOf<Int?>(null) }
     var isSyncScrollingRight by remember { mutableStateOf(false) }
     var highlightRightSentenceIndex by remember { mutableIntStateOf(-1) }
+    // Right-panel <- / -> jump in flight: true = select the last sentence on arrival, false = first
+    var pendingRightSentenceLast by remember { mutableStateOf<Boolean?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
 
     // Load session when screen is created
@@ -274,19 +276,27 @@ fun ReaderScreen(
                             viewModel.onTtsSentenceTextReceived(text)
                         },
                         onPrevSentence = {
-                            rightOffset = rightSentenceIndex - state.leftSentenceIndex
-                            val newIndex = (state.leftSentenceIndex - 1).coerceAtLeast(0)
-                            viewModel.updateTtsSentenceIndex(newIndex)
-                            rightSentenceIndex = (newIndex + rightOffset).coerceAtLeast(0)
+                            val current = viewModel.state.value.leftSentenceIndex
+                            rightOffset = rightSentenceIndex - current
+                            // First sentence: jumps to the last one of the previous paragraph
+                            val targetParagraph = viewModel.previousLeftSentence()
+                            if (targetParagraph != null) {
+                                scrollToLeftIndex = targetParagraph
+                            } else {
+                                rightSentenceIndex = (current - 1 + rightOffset).coerceAtLeast(0)
+                            }
                         },
                         onNextSentence = {
-                            rightOffset = rightSentenceIndex - state.leftSentenceIndex
-                            val newIndex = (state.leftSentenceIndex + 1).coerceAtMost(
-                                (state.leftSentenceCount - 1).coerceAtLeast(0)
-                            )
-                            viewModel.updateTtsSentenceIndex(newIndex)
-                            rightSentenceIndex = (newIndex + rightOffset)
-                                .coerceAtMost((rightSentenceCount - 1).coerceAtLeast(0))
+                            val current = viewModel.state.value.leftSentenceIndex
+                            rightOffset = rightSentenceIndex - current
+                            // Last sentence: jumps to the first one of the next paragraph
+                            val targetParagraph = viewModel.nextLeftSentence()
+                            if (targetParagraph != null) {
+                                scrollToLeftIndex = targetParagraph
+                            } else {
+                                rightSentenceIndex = (current + 1 + rightOffset)
+                                    .coerceAtMost((rightSentenceCount - 1).coerceAtLeast(0))
+                            }
                         },
                         onPrevParagraph = {
                             // Navigate left book to previous paragraph
@@ -565,17 +575,40 @@ fun ReaderScreen(
                         currentSentenceIndex = rightSentenceIndex,
                         onSentenceCountChanged = { count ->
                             rightSentenceCount = count
-                            if (count > 0 && rightSentenceIndex == -1) {
+                            val selectLast = pendingRightSentenceLast
+                            if (selectLast != null) {
+                                // A <- / -> jump to another paragraph landed: first / last sentence,
+                                // after the WebView's own "select sentence 0" (~50 ms)
+                                pendingRightSentenceLast = null
+                                coroutineScope.launch {
+                                    delay(250)
+                                    rightSentenceIndex = if (selectLast) (count - 1).coerceAtLeast(0) else 0
+                                }
+                            } else if (count > 0 && rightSentenceIndex == -1) {
                                 rightSentenceIndex = 0
                             }
                         },
                         onPrevSentence = {
-                            rightSentenceIndex = (rightSentenceIndex - 1).coerceAtLeast(0)
+                            if (rightSentenceIndex > 0) {
+                                rightSentenceIndex -= 1
+                            } else {
+                                // First sentence: last sentence of the previous paragraph
+                                viewModel.adjacentParagraph(isLeft = false, from = rightParagraphIndex, step = -1)?.let {
+                                    pendingRightSentenceLast = true
+                                    scrollToRightIndex = it
+                                }
+                            }
                         },
                         onNextSentence = {
-                            rightSentenceIndex = (rightSentenceIndex + 1).coerceAtMost(
-                                (rightSentenceCount - 1).coerceAtLeast(0)
-                            )
+                            if (rightSentenceIndex < rightSentenceCount - 1) {
+                                rightSentenceIndex += 1
+                            } else {
+                                // Last sentence: first sentence of the next paragraph
+                                viewModel.adjacentParagraph(isLeft = false, from = rightParagraphIndex, step = 1)?.let {
+                                    pendingRightSentenceLast = false
+                                    scrollToRightIndex = it
+                                }
+                            }
                         },
                         onPrevParagraph = {
                             // Only navigate right book to previous paragraph

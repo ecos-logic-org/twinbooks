@@ -66,6 +66,8 @@ class ReaderViewModel @Inject constructor(
     private var lastKnownRightIndex = -1
     private var lastMatchScore = 0f
     private val SERVER_RETRY_MS = 5 * 60 * 1000L
+    // Time for the WebView to settle on a new paragraph (it selects sentence 0 after ~50 ms)
+    private val PARAGRAPH_SETTLE_MS = 250L
     private val HTML_TAG = Regex("<[^>]+>")
     private val PARAGRAPH_TAG = Regex("<p(?:\\s[^>]*)?>(.*?)</p>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
     private val WHITESPACE = Regex("\\s+")
@@ -652,10 +654,81 @@ class ReaderViewModel @Inject constructor(
 
     fun updateLeftParagraphIndex(index: Int) {
         _state.update { it.copy(leftParagraphIndex = index) }
+
+        // A <- / -> jump to another paragraph landed: select its first / last sentence.
+        // Delayed so it runs after the WebView's own "select sentence 0 of the new paragraph".
+        pendingLeftSentence?.let { (paragraph, selectLast) ->
+            if (paragraph == index) {
+                pendingLeftSentence = null
+                viewModelScope.launch {
+                    delay(PARAGRAPH_SETTLE_MS)
+                    val count = _state.value.leftSentenceCount
+                    selectLeftSentence(if (selectLast) (count - 1).coerceAtLeast(0) else 0)
+                }
+            }
+        }
         
         // Analyze drift every 10 paragraph changes during sync
         if (_state.value.isSynchronized && index % 10 == 0 && index > 0) {
             analyzeSyncDrift()
+        }
+    }
+
+    // --- Sentence navigation (<- / -> buttons) ---------------------------------------
+    // Inside a paragraph they move one sentence; at its first / last sentence they jump to
+    // the last sentence of the previous paragraph / first sentence of the next one.
+
+    // Paragraph being jumped to and whether its LAST sentence must be selected on arrival
+    private var pendingLeftSentence: Pair<Int, Boolean>? = null
+
+    /** "->" on the left book. Returns the paragraph to scroll to when it leaves the current one. */
+    fun nextLeftSentence(): Int? {
+        val s = _state.value
+        if (s.leftSentenceIndex < s.leftSentenceCount - 1) {
+            selectLeftSentence(s.leftSentenceIndex + 1)
+            return null
+        }
+        return adjacentParagraph(isLeft = true, from = s.leftParagraphIndex, step = 1)
+            ?.also { pendingLeftSentence = it to false }
+    }
+
+    /** "<-" on the left book. Returns the paragraph to scroll to when it leaves the current one. */
+    fun previousLeftSentence(): Int? {
+        val s = _state.value
+        if (s.leftSentenceIndex > 0) {
+            selectLeftSentence(s.leftSentenceIndex - 1)
+            return null
+        }
+        return adjacentParagraph(isLeft = true, from = s.leftParagraphIndex, step = -1)
+            ?.also { pendingLeftSentence = it to true }
+    }
+
+    /**
+     * Nearest paragraph in the [step] direction that has text: empty <p> used as scene
+     * breaks are skipped. Null at the start/end of the chapter.
+     */
+    fun adjacentParagraph(isLeft: Boolean, from: Int, step: Int): Int? {
+        if (from < 0) return null
+        val paragraphs = webViewParagraphs(isLeft) ?: return (from + step).takeIf { it >= 0 }
+        var i = from + step
+        while (i in paragraphs.indices) {
+            if (paragraphs[i].isNotBlank()) return i
+            i += step
+        }
+        return null
+    }
+
+    private fun selectLeftSentence(index: Int) {
+        _state.update { it.copy(leftSentenceIndex = index) }
+        val s = _state.value
+        if (s.isTtsPlaying && !s.isSingleBookMode) {
+            // Continue reading from the chosen sentence: the WebView highlight reports its
+            // text, which onTtsSentenceTextReceived accepts because it's now the expected one
+            ttsManager.stop()
+            bilingualPhase = 0
+            isBilingualPendingTranslation = false
+            ttsExpectedSentenceIndex = index
+            ttsExpectedParagraphIndex = s.leftParagraphIndex
         }
     }
 
