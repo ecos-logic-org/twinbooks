@@ -85,6 +85,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.documentfile)
+    // MediaSession + media notification (TTS controls on the lock screen)
+    implementation(libs.androidx.media)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

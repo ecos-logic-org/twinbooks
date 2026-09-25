@@ -5,6 +5,9 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,6 +28,10 @@ class TtsManager @Inject constructor(
     private var reconnectAttempts = 0
 
     var onSentenceComplete: ((String?) -> Unit)? = null
+
+    private val _currentUtterance = MutableStateFlow("")
+    /** Text of the sentence being spoken (EN or ES), shown on the lock screen player */
+    val currentUtterance: StateFlow<String> = _currentUtterance.asStateFlow()
 
     fun init() {
         if (tts != null && (isInitialized || isInitializing)) return
@@ -73,6 +80,7 @@ class TtsManager @Inject constructor(
 
     fun speak(text: String, sentenceIndex: Int, speed: Float = 1.0f): Boolean =
         speakWithRetry(retry = { speak(text, sentenceIndex, speed) }) {
+            _currentUtterance.value = text
             tts?.setLanguage(Locale.US)
             tts?.setSpeechRate(speed)
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, android.os.Bundle(), "sentence_$sentenceIndex")
@@ -83,6 +91,7 @@ class TtsManager @Inject constructor(
      */
     fun speakSpanish(text: String, sentenceIndex: Int): Boolean =
         speakWithRetry(retry = { speakSpanish(text, sentenceIndex) }) {
+            _currentUtterance.value = text
             val langResult = tts?.setLanguage(Locale.forLanguageTag("es-ES"))
             if (langResult == TextToSpeech.LANG_MISSING_DATA || langResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                 Log.w("TtsManager", "Spanish not available, using default locale")

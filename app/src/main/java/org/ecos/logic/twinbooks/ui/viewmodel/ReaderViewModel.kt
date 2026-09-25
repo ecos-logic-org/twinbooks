@@ -1,6 +1,9 @@
 package org.ecos.logic.twinbooks.ui.viewmodel
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -35,6 +38,9 @@ import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 import org.ecos.logic.twinbooks.embedding.EmbeddingManager
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import org.ecos.logic.twinbooks.text.SentenceSplitter
+import org.ecos.logic.twinbooks.tts.PlaybackBridge
+import org.ecos.logic.twinbooks.tts.PlaybackCommand
+import org.ecos.logic.twinbooks.tts.PlaybackInfo
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
@@ -46,7 +52,8 @@ class ReaderViewModel @Inject constructor(
     private val embeddingManager: EmbeddingManager,
     private val alignmentManager: AlignmentManager,
     private val alignmentRepository: AlignmentRepository,
-    private val chapterAlignmentDao: ChapterAlignmentDao
+    private val chapterAlignmentDao: ChapterAlignmentDao,
+    private val playbackBridge: PlaybackBridge
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReadingState())
@@ -180,8 +187,72 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    // --- Lock screen / notification player (TtsPlaybackService) ---------------------
+    // Active from the first play until stopTts(): while paused it stays, so reading can be
+    // resumed from the lock screen.
+    private var playbackActive = false
+    private var coverSource: String? = null
+    private var coverBitmap: Bitmap? = null
+
+    init {
+        viewModelScope.launch {
+            ttsManager.currentUtterance.collect { if (playbackActive) publishPlayback() }
+        }
+        viewModelScope.launch {
+            playbackBridge.commands.collect { command ->
+                val playing = _state.value.isTtsPlaying
+                when (command) {
+                    PlaybackCommand.PLAY -> if (!playing) startTts()
+                    PlaybackCommand.PAUSE -> if (playing) pauseTts()
+                    PlaybackCommand.TOGGLE -> toggleTts()
+                    PlaybackCommand.STOP -> stopTts()
+                }
+            }
+        }
+    }
+
+    private fun publishPlayback() {
+        if (!playbackActive) {
+            playbackBridge.publish(PlaybackInfo())
+            return
+        }
+        val s = _state.value
+        playbackBridge.publish(
+            PlaybackInfo(
+                active = true,
+                isPlaying = s.isTtsPlaying,
+                bookTitle = s.leftBook?.title.orEmpty(),
+                sentence = ttsManager.currentUtterance.value,
+                cover = coverBitmap(s.leftBook?.coverImage)
+            )
+        )
+    }
+
+    /** Book cover (base64 data URI) as a small bitmap for the lock screen, cached. */
+    private fun coverBitmap(dataUri: String?): Bitmap? {
+        if (dataUri != coverSource) {
+            coverSource = dataUri
+            coverBitmap = dataUri?.let { uri ->
+                try {
+                    val bytes = Base64.decode(uri.substringAfter("base64,"), Base64.NO_WRAP)
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                    var sample = 1
+                    while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 512) sample *= 2
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+                } catch (e: Exception) {
+                    Log.w("ReaderViewModel", "Cover could not be decoded for the lock screen", e)
+                    null
+                }
+            }
+        }
+        return coverBitmap
+    }
+
     override fun onCleared() {
         super.onCleared()
+        playbackActive = false
+        publishPlayback()
         ttsManager.shutdown()
         ttsTimerJob?.cancel()
     }
@@ -1321,6 +1392,8 @@ class ReaderViewModel @Inject constructor(
         if (_state.value.leftBook == null) return
         ttsManager.init()
         _state.update { it.copy(isTtsPlaying = true) }
+        playbackActive = true
+        publishPlayback()
         if (_state.value.ttsTimeLimitMinutes > 0) {
             startTtsTimer()
         }
@@ -1347,6 +1420,7 @@ class ReaderViewModel @Inject constructor(
         ttsExpectedRightParagraphIndex = -1
         _state.update { it.copy(isTtsPlaying = false) }
         ttsTimerJob?.cancel()
+        publishPlayback()
     }
 
     fun stopTts() {
@@ -1359,6 +1433,8 @@ class ReaderViewModel @Inject constructor(
         lastSpokenEnglishText = ""
         _state.update { it.copy(isTtsPlaying = false, ttsRemainingSeconds = 0) }
         ttsTimerJob?.cancel()
+        playbackActive = false
+        publishPlayback()
     }
 
     fun cycleTtsTimeLimit() {
