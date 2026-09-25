@@ -30,6 +30,8 @@ data class ReadingState(
     val rightBookUri: String? = null,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
+    // The requested session no longer exists (e.g. reopened after being deleted)
+    val sessionNotFound: Boolean = false,
     val fontSize: Float = 12f,
     val isSynchronized: Boolean = false,
     val syncOffset: Int = 0,

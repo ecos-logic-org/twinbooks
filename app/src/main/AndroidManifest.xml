@@ -24,12 +24,6 @@
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="35">
 
-        <!-- Landscape-only reader: on large screens Android 16+ ignores screenOrientation for
-             apps targeting API 36+. This opt-out keeps it (only honoured up to targetSdk 36;
-             targetSdk 37 removes it, so don't bump targetSdk without dropping landscape-only). -->
-        <property
-            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
-            android:value="true" />
 
         <activity
             android:name=".MainActivity"
@@ -37,10 +31,6 @@
             android:exported="true"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="adjustResize">
-
-            <property
-                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
-                android:value="true" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

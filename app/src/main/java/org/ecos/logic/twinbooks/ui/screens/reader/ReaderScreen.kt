@@ -189,6 +189,10 @@ fun ReaderScreen(
         }
     }
 
+    LaunchedEffect(state.sessionNotFound) {
+        if (state.sessionNotFound) onBackToBookshelf()
+    }
+
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
             snackbarHostState.showSnackbar(it)

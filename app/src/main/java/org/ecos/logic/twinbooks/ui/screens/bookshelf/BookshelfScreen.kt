@@ -16,6 +16,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -234,21 +238,25 @@ fun BookshelfScreen(
                 }
             }
         } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                sessions.forEach { sessionWithCover ->
-                    SessionCard(
-                        sessionWithCover = sessionWithCover,
-                        onClick = { onSessionSelected(sessionWithCover.session) },
-                        onDelete = {
-                            sessionToDelete = sessionWithCover.session
-                            showDeleteDialog = true
-                        }
-                    )
+            // Grid of up to 3 columns: 3 in landscape, 2 in portrait (cards need ~380dp)
+            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                val columns = (maxWidth / 380.dp).toInt().coerceIn(1, 3)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(sessions, key = { it.session.id }) { sessionWithCover ->
+                        SessionCard(
+                            sessionWithCover = sessionWithCover,
+                            onClick = { onSessionSelected(sessionWithCover.session) },
+                            onDelete = {
+                                sessionToDelete = sessionWithCover.session
+                                showDeleteDialog = true
+                            }
+                        )
+                    }
                 }
             }
         }

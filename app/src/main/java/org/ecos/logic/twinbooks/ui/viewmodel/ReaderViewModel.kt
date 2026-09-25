@@ -165,7 +165,7 @@ class ReaderViewModel @Inject constructor(
                 computeChapterMap()
             } else {
                 _state.update {
-                    it.copy(isLoading = false, errorMessage = "Session not found")
+                    it.copy(isLoading = false, sessionNotFound = true)
                 }
             }
         }
