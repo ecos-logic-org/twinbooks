@@ -193,6 +193,14 @@ fun ReaderScreen(
         if (state.sessionNotFound) onBackToBookshelf()
     }
 
+    // A chapter alignment just became available (on open it usually arrives after the
+    // first sync, which then used the rough fallback): place the right panel again
+    LaunchedEffect(state.resyncRightTrigger) {
+        if (state.resyncRightTrigger > 0 && state.isSynchronized && state.leftParagraphIndex >= 0) {
+            viewModel.findAndSyncBestMatch(state.leftParagraphIndex) { scrollToRightIndex = it }
+        }
+    }
+
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -274,7 +282,7 @@ fun ReaderScreen(
                             val leftParaIndex = state.leftParagraphIndex
                             val leftChapter = state.leftBook?.chapters?.getOrNull(state.leftPosition.chapterIndex)
                             val leftTotalParagraphs = leftChapter?.htmlContent?.let { 
-                                Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count() 
+                                Regex("<p(\\s[^>]*)?>", RegexOption.IGNORE_CASE).findAll(it).count() 
                             } ?: 1
                             if (leftParaIndex < leftTotalParagraphs - 1) {
                                 val newIndex = leftParaIndex + 1
@@ -285,7 +293,7 @@ fun ReaderScreen(
                             if (state.isSynchronized) {
                                 val rightChapter = state.rightBook?.chapters?.getOrNull(state.rightPosition.chapterIndex)
                                 val rightTotalParagraphs = rightChapter?.htmlContent?.let { 
-                                    Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count() 
+                                    Regex("<p(\\s[^>]*)?>", RegexOption.IGNORE_CASE).findAll(it).count() 
                                 } ?: 1
                                 if (rightParagraphIndex < rightTotalParagraphs - 1) {
                                     rightParagraphIndex += 1
@@ -549,7 +557,7 @@ fun ReaderScreen(
                             // Only navigate right book to next paragraph
                             val rightChapter = state.rightBook?.chapters?.getOrNull(state.rightPosition.chapterIndex)
                             val rightTotalParagraphs = rightChapter?.htmlContent?.let {
-                                Regex("<p[^>]*>", RegexOption.IGNORE_CASE).findAll(it).count()
+                                Regex("<p(\\s[^>]*)?>", RegexOption.IGNORE_CASE).findAll(it).count()
                             } ?: 1
                             if (rightParagraphIndex < rightTotalParagraphs - 1) {
                                 rightParagraphIndex += 1

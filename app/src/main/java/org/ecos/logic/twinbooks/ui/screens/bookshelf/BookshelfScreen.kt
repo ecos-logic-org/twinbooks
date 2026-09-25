@@ -103,9 +103,19 @@ private fun rememberCoverBitmap(dataUri: String?): ImageBitmap? {
 fun BookshelfScreen(
     viewModel: BookshelfViewModel = hiltViewModel(),
     onSessionSelected: (ReadingSession) -> Unit,
-    onCreateNewPair: () -> Unit
+    onCreateNewPair: () -> Unit,
+    incomingBookUri: Uri? = null,
+    onIncomingBookConsumed: () -> Unit = {}
 ) {
     val sessions by viewModel.sessions.collectAsState()
+    val incomingBook by viewModel.incomingBook.collectAsState()
+
+    LaunchedEffect(incomingBookUri) {
+        incomingBookUri?.let {
+            viewModel.importIncomingBook(it)
+            onIncomingBookConsumed()
+        }
+    }
     val context = LocalContext.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var sessionToDelete by remember { mutableStateOf<ReadingSession?>(null) }
@@ -288,6 +298,34 @@ fun BookshelfScreen(
                     rightBookSelected = false
                 }
             }
+        )
+    }
+
+    // EPUB opened from another app: how is it going to be read?
+    incomingBook?.let { book ->
+        IncomingBookDialog(
+            book = book,
+            onOpenExisting = { session ->
+                viewModel.dismissIncomingBook()
+                onSessionSelected(session)
+            },
+            onSingleBook = {
+                viewModel.createSingleBook(book.uri)
+                viewModel.dismissIncomingBook()
+            },
+            onPairLeft = {
+                viewModel.setLeftBookUri(book.uri)
+                leftBookSelected = true
+                showNewPairDialog = true
+                viewModel.dismissIncomingBook()
+            },
+            onPairRight = {
+                viewModel.setRightBookUri(book.uri)
+                rightBookSelected = true
+                showNewPairDialog = true
+                viewModel.dismissIncomingBook()
+            },
+            onDismiss = { viewModel.dismissIncomingBook() }
         )
     }
 
@@ -673,5 +711,79 @@ private fun persistUriPermission(context: Context, uri: Uri) {
         )
     } catch (e: Exception) {
         e.printStackTrace()
+    }
+}
+
+@Composable
+private fun IncomingBookDialog(
+    book: BookshelfViewModel.IncomingBook,
+    onOpenExisting: (ReadingSession) -> Unit,
+    onSingleBook: () -> Unit,
+    onPairLeft: () -> Unit,
+    onPairRight: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(book.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val existing = book.existingSession
+                if (existing != null) {
+                    Text("Este libro ya está en tu estantería.", color = Color(0xFFB0B0B0))
+                    IncomingBookOption("Abrirlo", "Continuar donde lo dejaste", Icons.Default.MenuBook) {
+                        onOpenExisting(existing)
+                    }
+                } else {
+                    Text("¿Cómo quieres leerlo?", color = Color(0xFFB0B0B0))
+                    IncomingBookOption(
+                        "Libro único",
+                        "A pantalla completa, con traducción automática al castellano",
+                        Icons.Default.Translate,
+                        onSingleBook
+                    )
+                    IncomingBookOption(
+                        "Libro en inglés de un par",
+                        "Panel izquierdo; después eliges el libro en castellano",
+                        Icons.Default.Add,
+                        onPairLeft
+                    )
+                    IncomingBookOption(
+                        "Libro en castellano de un par",
+                        "Panel derecho; después eliges el libro en inglés",
+                        Icons.Default.Add,
+                        onPairRight
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+@Composable
+private fun IncomingBookOption(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF2A2A2A), RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = Color(0xFF80CBC4), modifier = Modifier.size(24.dp))
+        Column {
+            Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Color(0xFF9E9E9E), fontSize = 13.sp)
+        }
     }
 }

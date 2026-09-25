@@ -66,6 +66,7 @@ class ReaderViewModel @Inject constructor(
     private var lastMatchScore = 0f
     private val SERVER_RETRY_MS = 5 * 60 * 1000L
     private val HTML_TAG = Regex("<[^>]+>")
+    private val PARAGRAPH_TAG = Regex("<p(?:\\s[^>]*)?>(.*?)</p>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
     private val WHITESPACE = Regex("\\s+")
     private val MIN_SYNC_SCORE = 0.15f // 15% minimum word overlap to trust match (translation fallback)
     // Sentence alignment state (computed per chapter pair)
@@ -702,8 +703,8 @@ class ReaderViewModel @Inject constructor(
         }
 
         // Count paragraphs in both chapters
-        val leftParagraphs = extractParagraphs(leftChapter.htmlContent)
-        val rightParagraphs = extractParagraphs(rightChapter.htmlContent)
+        val leftParagraphs = webViewParagraphs(isLeft = true) ?: extractParagraphs(leftChapter.htmlContent)
+        val rightParagraphs = webViewParagraphs(isLeft = false) ?: extractParagraphs(rightChapter.htmlContent)
         
         if (rightParagraphs.isEmpty()) {
             Log.d("SyncTranslation", "No paragraphs found in right chapter")
@@ -773,11 +774,26 @@ class ReaderViewModel @Inject constructor(
      * Extract paragraphs from HTML content
      */
     private fun extractParagraphs(html: String): List<String> {
-        return Regex("<p[^>]*>(.*?)</p>", RegexOption.DOT_MATCHES_ALL)
+        // Indexed like the WebView (document.querySelectorAll('p')): empty <p> (scene
+        // breaks) are KEPT, otherwise every index after one is shifted by one. "<p" must be
+        // followed by whitespace or ">" so <pre>, <param> or SVG <path> don't count.
+        return PARAGRAPH_TAG
             .findAll(html)
-            .map { it.groupValues[1].replace(Regex("<[^>]+>"), "").trim() }
-            .filter { it.isNotEmpty() }
+            .map { it.groupValues[1].replace(HTML_TAG, "").trim() }
             .toList()
+    }
+
+    /**
+     * Paragraph texts of the current chapter as the WebView sees them (compromise.js push),
+     * so indices are exactly the DOM ones. Null until that panel has pushed its list.
+     */
+    private fun webViewParagraphs(isLeft: Boolean): List<String>? {
+        val s = _state.value
+        return if (isLeft) {
+            leftChapterSentencesByPara.takeIf { leftSentencesChapterIdx == s.leftPosition.chapterIndex && it.isNotEmpty() }
+        } else {
+            rightChapterSentencesByPara.takeIf { rightSentencesChapterIdx == s.rightPosition.chapterIndex && it.isNotEmpty() }
+        }?.map { it.joinToString(" ").trim() }
     }
 
     /**
@@ -965,6 +981,9 @@ class ReaderViewModel @Inject constructor(
         currentAlignmentKey = key
         alignmentFromServer = fromServer
         alignmentByLeft = pairs.groupBy({ it.first }, { it.second })
+        if (_state.value.isSynchronized) {
+            _state.update { it.copy(resyncRightTrigger = it.resyncRightTrigger + 1) }
+        }
     }
 
     /**

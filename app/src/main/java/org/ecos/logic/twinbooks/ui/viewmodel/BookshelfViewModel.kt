@@ -1,6 +1,13 @@
 package org.ecos.logic.twinbooks.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,8 +21,20 @@ import javax.inject.Inject
 
 @HiltViewModel
 class BookshelfViewModel @Inject constructor(
-    private val bookRepository: BookRepository
+    private val bookRepository: BookRepository,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    /** An EPUB opened from another app, copied into the app's storage, pending the user's choice. */
+    data class IncomingBook(
+        val uri: String,
+        val title: String,
+        /** Session that already uses this book, if any */
+        val existingSession: ReadingSession?
+    )
+
+    private val _incomingBook = MutableStateFlow<IncomingBook?>(null)
+    val incomingBook = _incomingBook.asStateFlow()
 
     private val _sessions = MutableStateFlow<List<SessionWithCover>>(emptyList())
     val sessions = _sessions.asStateFlow()
@@ -111,6 +130,61 @@ class BookshelfViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * EPUB received from another app. The read grant of a VIEW intent is temporary and can't
+     * be made persistent, so the file is copied to internal storage and the session uses
+     * that copy (otherwise the book couldn't be reopened later).
+     */
+    fun importIncomingBook(uri: Uri) {
+        viewModelScope.launch {
+            val localUri = withContext(Dispatchers.IO) { copyToLibrary(uri) }
+            if (localUri == null) {
+                Log.w("BookshelfViewModel", "Could not import $uri")
+                return@launch
+            }
+            val book = bookRepository.loadBookFromUri(localUri)
+            if (book == null) {
+                Log.w("BookshelfViewModel", "Imported file is not a readable EPUB: $localUri")
+                return@launch
+            }
+            val existing = bookRepository.getAllSessions()
+                .firstOrNull { it.leftBookUri == localUri || it.rightBookUri == localUri }
+            _incomingBook.value = IncomingBook(localUri, book.title, existing)
+        }
+    }
+
+    fun dismissIncomingBook() {
+        _incomingBook.value = null
+    }
+
+    /** Copies [source] to files/books/ and returns its file:// URI (reused if already imported). */
+    private fun copyToLibrary(source: Uri): String? = try {
+        val name = displayName(source)
+            ?.replace(Regex("[^\\p{L}\\p{N}._ -]"), "_")
+            ?.let { if (it.endsWith(".epub", ignoreCase = true)) it else "$it.epub" }
+            ?: "book_${System.currentTimeMillis()}.epub"
+        val dir = File(context.filesDir, "books").apply { mkdirs() }
+        val size = context.contentResolver.openAssetFileDescriptor(source, "r")?.use { it.length } ?: -1L
+        var target = File(dir, name)
+        if (!(target.exists() && size > 0 && target.length() == size)) {
+            // Same name but different content: don't overwrite a book already in use
+            var n = 1
+            while (target.exists()) target = File(dir, name.removeSuffix(".epub") + "_${n++}.epub")
+            context.contentResolver.openInputStream(source)?.use { input ->
+                target.outputStream().use { input.copyTo(it) }
+            } ?: return null
+        }
+        Uri.fromFile(target).toString()
+    } catch (e: Exception) {
+        Log.e("BookshelfViewModel", "Import failed for $source", e)
+        null
+    }
+
+    private fun displayName(uri: Uri): String? =
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            ?: uri.lastPathSegment?.substringAfterLast('/')
 
     fun deleteSession(sessionId: Long) {
         viewModelScope.launch {
