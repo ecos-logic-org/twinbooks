@@ -3,8 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Android 17+: required to reach the LAN alignment server (192.168.x.x) -->
-    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <!-- TTS keeps reading with the screen locked: media playback foreground service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:ignore="ForegroundServicesPolicy" />

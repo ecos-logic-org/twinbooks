@@ -6,12 +6,6 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Cloud
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
-import org.ecos.logic.twinbooks.BuildConfig
-import androidx.core.content.ContextCompat
-import android.util.Log
-import android.os.Build
-import android.content.pm.PackageManager
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -180,24 +174,7 @@ fun ReaderScreen(
         }
     }
 
-    // Android 17+ (targetSdk 37): talking to the LAN alignment server needs the
-    // ACCESS_LOCAL_NETWORK runtime permission. Asked when a pair is open, which is when the
-    // server is used; if denied, the local (offline) alignment is used instead.
-    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        Log.d("ReaderScreen", "ACCESS_LOCAL_NETWORK granted=$granted")
-    }
     val hasPair = state.rightBook != null && !state.isSingleBookMode
-    val serverOnLan = remember { isLocalNetworkUrl(BuildConfig.ALIGNMENT_BASE_URL) }
-    LaunchedEffect(hasPair) {
-        if (hasPair && serverOnLan && Build.VERSION.SDK_INT >= 37 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_LOCAL_NETWORK) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
-        }
-    }
 
     LaunchedEffect(state.sessionNotFound) {
         if (state.sessionNotFound) onBackToBookshelf()
@@ -1226,11 +1203,4 @@ internal fun serverStatusLook(status: ServerStatus): Triple<ImageVector, Color, 
     ServerStatus.OFFLINE -> Triple(Icons.Default.CloudOff, Color(0xFFEF5350), "Servidor de alineación no disponible")
     ServerStatus.UNAUTHORIZED -> Triple(Icons.Default.Key, Color(0xFFFFA726), "Clave de API del servidor no válida")
     ServerStatus.CHECKING, ServerStatus.UNKNOWN -> Triple(Icons.Default.CloudSync, Color(0xFF9E9E9E), "Comprobando el servidor de alineación")
-}
-
-/** True for http(s) URLs pointing at a private LAN address (needs ACCESS_LOCAL_NETWORK). */
-private fun isLocalNetworkUrl(url: String): Boolean {
-    val host = Uri.parse(url).host ?: return false
-    return host == "localhost" ||
-        Regex("""^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)""").containsMatchIn(host)
 }
