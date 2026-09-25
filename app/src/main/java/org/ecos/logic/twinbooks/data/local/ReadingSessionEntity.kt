@@ -26,5 +26,7 @@ data class ReadingSessionEntity(
     val ttsBilingualMode: String = "OFF",
     val ttsSpeed: Float = 1.0f,
     val isSingleBookMode: Boolean = false,
-    val autoTranslationEnabled: Boolean = true
+    val autoTranslationEnabled: Boolean = true,
+    // Manual chapter-map corrections "left:right,left:right" (see ChapterMatcher forced pairs)
+    val chapterOverrides: String = ""
 )

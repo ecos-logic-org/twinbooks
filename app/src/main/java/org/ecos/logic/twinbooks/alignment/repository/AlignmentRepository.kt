@@ -37,7 +37,8 @@ class AlignmentRepository @Inject constructor(
         .client(
             OkHttpClient.Builder()
                 .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
-                .connectTimeout(30, TimeUnit.SECONDS)
+                // LAN server: fail fast when away from home (local alignment takes over)
+                .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
                 .build()

@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,11 +13,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import org.ecos.logic.twinbooks.alignment.AlignmentManager
+import org.ecos.logic.twinbooks.alignment.ChapterMatcher
+import org.ecos.logic.twinbooks.alignment.LexicalAligner
 import org.ecos.logic.twinbooks.alignment.model.ChapterAlignResponse
 import org.ecos.logic.twinbooks.alignment.model.AlignmentResultWrapper
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
+import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
+import org.ecos.logic.twinbooks.data.local.ChapterAlignmentEntity
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.Chapter
@@ -37,7 +43,8 @@ class ReaderViewModel @Inject constructor(
     private val translationManager: TranslationManager,
     private val embeddingManager: EmbeddingManager,
     private val alignmentManager: AlignmentManager,
-    private val alignmentRepository: AlignmentRepository
+    private val alignmentRepository: AlignmentRepository,
+    private val chapterAlignmentDao: ChapterAlignmentDao
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReadingState())
@@ -56,6 +63,9 @@ class ReaderViewModel @Inject constructor(
     private var isFirstSyncInChapter = true
     private var lastKnownRightIndex = -1
     private var lastMatchScore = 0f
+    private val SERVER_RETRY_MS = 5 * 60 * 1000L
+    private val HTML_TAG = Regex("<[^>]+>")
+    private val WHITESPACE = Regex("\\s+")
     private val MIN_SYNC_SCORE = 0.15f // 15% minimum word overlap to trust match (translation fallback)
     // Sentence alignment state (computed per chapter pair)
     private var currentSentenceAlignment: List<Pair<Int, Int>> = emptyList()
@@ -72,6 +82,19 @@ class ReaderViewModel @Inject constructor(
     private var chapterAlignmentCache: ChapterAlignResponse? = null
     private var chapterAlignmentCacheKey: String? = null
     private var currentAlignmentKey: String? = null
+    // Lookup for the current chapter alignment: left global sentence -> right global sentences
+    private var alignmentByLeft: Map<Int, List<Int>> = emptyMap()
+    private var alignmentFromServer = false
+    // Server negative cache: don't retry a chapter pair for a while after a failure
+    private var serverFailedKey: String? = null
+    private var serverFailedAt = 0L
+    // Local (offline) chapter alignment: ML Kit translation + LexicalAligner
+    private var localAlignmentJob: Job? = null
+    private var localAlignmentJobKey: String? = null
+    // Chapter map: left spine index -> right spine index (-1 = unmatched), see ChapterMatcher
+    private var chapterMap: IntArray? = null
+    private var chapterOverrides: Map<Int, Int> = emptyMap()
+    private var chapterMapJob: Job? = null
     // Callback to highlight sentence in right book
     var onHighlightRightSentence: ((Int) -> Unit)? = null
     private var currentSessionId: Long = -1
@@ -97,6 +120,7 @@ class ReaderViewModel @Inject constructor(
             if (session != null) {
                 val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
                 val rightBook = session.rightBookUri?.let { bookRepository.loadBookFromUri(it) }
+                chapterOverrides = decodeChapterOverrides(session.chapterOverrides)
 
                 _state.update {
                     it.copy(
@@ -131,6 +155,7 @@ class ReaderViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
+                computeChapterMap()
             } else {
                 _state.update {
                     it.copy(isLoading = false, errorMessage = "Session not found")
@@ -162,6 +187,7 @@ class ReaderViewModel @Inject constructor(
                     } else {
                         ReadingPosition()
                     }
+                    chapterOverrides = decodeChapterOverrides(existingSession?.chapterOverrides ?: "")
                     _state.update {
                         it.copy(
                             leftBook = book,
@@ -175,6 +201,7 @@ class ReaderViewModel @Inject constructor(
                             isLoading = false
                         )
                     }
+                    computeChapterMap()
                     saveCurrentSession()
                 } else {
                     _state.update {
@@ -208,6 +235,9 @@ class ReaderViewModel @Inject constructor(
                             isLoading = false
                         )
                     }
+                    // A different right book invalidates manual chapter corrections
+                    chapterOverrides = emptyMap()
+                    computeChapterMap()
                     saveCurrentSession()
                 } else {
                     _state.update {
@@ -250,6 +280,7 @@ class ReaderViewModel @Inject constructor(
                     } else {
                         ReadingPosition()
                     }
+                    chapterOverrides = decodeChapterOverrides(existingSession?.chapterOverrides ?: "")
                     _state.update {
                         it.copy(
                             leftBook = book,
@@ -273,6 +304,7 @@ class ReaderViewModel @Inject constructor(
                             isLoading = false
                         )
                     }
+                    computeChapterMap()
                     saveCurrentSession()
                 } else {
                     _state.update {
@@ -345,7 +377,23 @@ class ReaderViewModel @Inject constructor(
         saveCurrentSession()
     }
 
+    /**
+     * Chapter chosen from a TOC. With sync ON, the left TOC moves the right book to the
+     * mapped chapter, and choosing the right chapter by hand is remembered as a
+     * correction of the chapter map (forced pair).
+     */
     fun navigateToChapter(isLeft: Boolean, chapterIndex: Int) {
+        setChapter(isLeft, chapterIndex)
+        val s = _state.value
+        if (!s.isSynchronized || s.isSingleBookMode || s.leftBook == null || s.rightBook == null) return
+        if (isLeft) {
+            mappedRightChapter(chapterIndex)?.let { setChapter(false, it) }
+        } else {
+            recordChapterOverride(s.leftPosition.chapterIndex, chapterIndex)
+        }
+    }
+
+    private fun setChapter(isLeft: Boolean, chapterIndex: Int) {
         _state.update { state ->
             if (isLeft) {
                 state.copy(
@@ -450,6 +498,7 @@ class ReaderViewModel @Inject constructor(
         leftSentencesChapterIdx = chapterIndex
         currentLeftSentencesPerPara = parsed.map { it.size }
         Log.d("SentenceSplit", "Left ch=$chapterIndex: ${parsed.size} paras, ${parsed.sumOf { it.size }} sentences")
+        maybeStartLocalAlignment()
     }
 
     /**
@@ -462,6 +511,7 @@ class ReaderViewModel @Inject constructor(
         rightSentencesChapterIdx = chapterIndex
         currentRightSentencesPerPara = parsed.map { it.size }
         Log.d("SentenceSplit", "Right ch=$chapterIndex: ${parsed.size} paras, ${parsed.sumOf { it.size }} sentences")
+        maybeStartLocalAlignment()
     }
 
     private fun parseSentencesByParagraph(json: String): List<List<String>> {
@@ -604,7 +654,14 @@ class ReaderViewModel @Inject constructor(
 
         val leftTotal = leftParagraphs.size
         val rightTotal = rightParagraphs.size
-        
+
+        // BEST: derive the paragraph from the chapter sentence alignment (server or local)
+        alignedRightParagraph(leftParagraphIndex)?.let { rightPara ->
+            Log.d("SyncTranslation", "Alignment sync: Left=$leftParagraphIndex → Right=$rightPara")
+            onBestMatchFound(rightPara)
+            return
+        }
+
         // CHECK FOR ANCHOR: if user manually set a sync point, use it
         val anchorLeft = currentState.syncAnchorLeftIndex
         val anchorRight = currentState.syncAnchorRightIndex
@@ -730,39 +787,27 @@ class ReaderViewModel @Inject constructor(
             val leftGlobalIdx = currentLeftSentencesPerPara.take(leftParaIndex).sum() + leftSentenceIdx
             val rightSentencesBeforePara = currentRightSentencesPerPara.take(paraIndex).sum()
 
-            // STRATEGY 1: Server-side alignment (cached per chapter pair, one HTTP call)
+            // STRATEGY 1: refresh from the server (one HTTP call per chapter pair, cached;
+            // skipped for a while after a failure so TTS doesn't stall away from home)
             try {
-                val response = getChapterAlignment(leftChapter, rightChapter)
-                response?.let { r ->
-                    val pair = r.alignment.firstOrNull { it.leftIdx == leftGlobalIdx }
-                    if (pair != null) {
-                        val localRightIdx = pair.rightIdx - rightSentencesBeforePara
-                        if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
-                            Log.d("TtsBilingual", "Server Alignment match: leftGlobal=$leftGlobalIdx → rightGlobal=${pair.rightIdx} (local=$localRightIdx, score=${pair.score})")
-                            return Pair(spanishSentences[localRightIdx], localRightIdx)
-                        } else {
-                            Log.w("TtsBilingual", "Server alignment pair outside paragraph: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightBeforePara=$rightSentencesBeforePara")
-                        }
-                    } else {
-                        Log.w("TtsBilingual", "Server alignment has no pair for leftGlobal=$leftGlobalIdx")
-                    }
-                }
+                getChapterAlignment(leftChapter, rightChapter)
             } catch (e: Exception) {
-                Log.w("TtsBilingual", "Server alignment exception, falling back to local", e)
+                Log.w("TtsBilingual", "Server alignment exception, using local alignment", e)
             }
 
-            // STRATEGY 2: Pre-computed DP Alignment (instant fallback, same global index space)
-            if (currentSentenceAlignment.isNotEmpty() && currentAlignmentKey == alignmentCacheKey(leftChapter, rightChapter)) {
-                val alignedRightIdx = alignmentManager.getRightSentenceIndex(currentSentenceAlignment, leftGlobalIdx)
-                if (alignedRightIdx != null) {
-                    val localRightIdx = alignedRightIdx - rightSentencesBeforePara
-
-                    if (localRightIdx >= 0 && localRightIdx < spanishSentences.size) {
-                        Log.d("TtsBilingual", "DP Alignment fallback: leftGlobal=$leftGlobalIdx → rightGlobal=$alignedRightIdx (local=$localRightIdx)")
-                        return Pair(spanishSentences[localRightIdx], localRightIdx)
-                    } else {
-                        Log.w("TtsBilingual", "DP Alignment local index out of bounds: local=$localRightIdx, paraSentences=${spanishSentences.size}, rightSentencesBeforePara=$rightSentencesBeforePara, alignedRightIdx=$alignedRightIdx")
-                    }
+            // STRATEGY 2: chapter alignment (server result if it answered, otherwise the
+            // offline ML Kit + LexicalAligner one). Same global index space in both cases.
+            if (currentAlignmentKey == alignmentCacheKey(leftChapter, rightChapter)) {
+                val localRight = alignmentByLeft[leftGlobalIdx].orEmpty()
+                    .map { it - rightSentencesBeforePara }
+                    .filter { it in spanishSentences.indices }
+                if (localRight.isNotEmpty()) {
+                    // 1:2 alignments speak both Spanish sentences; highlight the first one
+                    val source = if (alignmentFromServer) "Server" else "Local"
+                    Log.d("TtsBilingual", "$source alignment: leftGlobal=$leftGlobalIdx → local=$localRight")
+                    return Pair(localRight.joinToString(" ") { spanishSentences[it] }, localRight.first())
+                } else {
+                    Log.w("TtsBilingual", "Alignment has no pair inside right paragraph $paraIndex for leftGlobal=$leftGlobalIdx")
                 }
             }
         }
@@ -829,6 +874,7 @@ class ReaderViewModel @Inject constructor(
         val key = alignmentCacheKey(leftChapter, rightChapter)
         if (!forceRefresh) {
             chapterAlignmentCache?.let { if (chapterAlignmentCacheKey == key) return it }
+            if (serverFailedKey == key && System.currentTimeMillis() - serverFailedAt < SERVER_RETRY_MS) return null
         }
 
         val leftSentences = leftChapterSentencesByPara.flatten()
@@ -847,12 +893,212 @@ class ReaderViewModel @Inject constructor(
         if (response != null) {
             chapterAlignmentCache = response
             chapterAlignmentCacheKey = key
-            currentSentenceAlignment = response.alignment.map { Pair(it.leftIdx, it.rightIdx) }
-            currentAlignmentKey = key
+            setSentenceAlignment(response.alignment.map { Pair(it.leftIdx, it.rightIdx) }, key, fromServer = true)
             Log.d("AlignmentCache", "Chapter aligned & cached: ${response.alignment.size} pairs (key=$key)")
+        } else {
+            serverFailedKey = key
+            serverFailedAt = System.currentTimeMillis()
         }
         return response
     }
+
+    private fun setSentenceAlignment(pairs: List<Pair<Int, Int>>, key: String, fromServer: Boolean) {
+        currentSentenceAlignment = pairs
+        currentAlignmentKey = key
+        alignmentFromServer = fromServer
+        alignmentByLeft = pairs.groupBy({ it.first }, { it.second })
+    }
+
+    /**
+     * Offline alignment of the current chapter pair, once both WebViews pushed their
+     * compromise.js sentences: left sentences are translated with ML Kit, then aligned
+     * with LexicalAligner. The result is stored in Room, so each chapter pair is computed
+     * once. A server alignment, when available, takes precedence.
+     */
+    private fun maybeStartLocalAlignment() {
+        val s = _state.value
+        if (s.isSingleBookMode) return
+        val leftChapterIdx = s.leftPosition.chapterIndex
+        val rightChapterIdx = s.rightPosition.chapterIndex
+        val leftChapter = s.leftBook?.chapters?.getOrNull(leftChapterIdx) ?: return
+        val rightChapter = s.rightBook?.chapters?.getOrNull(rightChapterIdx) ?: return
+        val leftUri = s.leftBookUri ?: return
+        val rightUri = s.rightBookUri ?: return
+        if (leftSentencesChapterIdx != leftChapterIdx || rightSentencesChapterIdx != rightChapterIdx) return
+
+        val key = alignmentCacheKey(leftChapter, rightChapter)
+        if (currentAlignmentKey == key && currentSentenceAlignment.isNotEmpty()) return
+        if (localAlignmentJobKey == key && localAlignmentJob?.isActive == true) return
+
+        val leftSentences = leftChapterSentencesByPara.flatten()
+        val rightSentences = rightChapterSentencesByPara.flatten()
+        if (leftSentences.isEmpty() || rightSentences.isEmpty()) return
+
+        localAlignmentJob?.cancel()
+        localAlignmentJobKey = key
+        localAlignmentJob = viewModelScope.launch {
+            try {
+                val stored = chapterAlignmentDao.get(leftUri, rightUri, leftChapterIdx, rightChapterIdx)
+                val pairs = if (stored != null &&
+                    stored.leftCount == leftSentences.size && stored.rightCount == rightSentences.size
+                ) {
+                    Log.d("LocalAlignment", "Loaded stored alignment for ch $leftChapterIdx↔$rightChapterIdx")
+                    decodePairs(stored.pairs)
+                } else {
+                    computeLocalAlignment(leftSentences, rightSentences)?.also { computed ->
+                        chapterAlignmentDao.upsert(
+                            ChapterAlignmentEntity(
+                                leftBookUri = leftUri,
+                                rightBookUri = rightUri,
+                                leftChapterIndex = leftChapterIdx,
+                                rightChapterIndex = rightChapterIdx,
+                                leftCount = leftSentences.size,
+                                rightCount = rightSentences.size,
+                                pairs = encodePairs(computed)
+                            )
+                        )
+                    } ?: return@launch
+                }
+                if (alignmentFromServer && currentAlignmentKey == key) return@launch
+                setSentenceAlignment(pairs, key, fromServer = false)
+                Log.d("LocalAlignment", "Chapter $leftChapterIdx↔$rightChapterIdx aligned locally: ${pairs.size} pairs")
+            } finally {
+                _state.update { it.copy(chapterAlignmentProgress = -1f) }
+            }
+        }
+    }
+
+    private suspend fun computeLocalAlignment(
+        leftSentences: List<String>,
+        rightSentences: List<String>
+    ): List<Pair<Int, Int>>? {
+        _state.update { it.copy(chapterAlignmentProgress = 0f) }
+        val translated = ArrayList<String>(leftSentences.size)
+        var untranslated = 0
+        for ((i, sentence) in leftSentences.withIndex()) {
+            val t = translationManager.translate(sentence, useCache = false)
+            if (t == sentence) untranslated++
+            translated.add(t)
+            if (i % 10 == 0) {
+                _state.update { it.copy(chapterAlignmentProgress = i.toFloat() / leftSentences.size) }
+            }
+        }
+        // translate() returns the input unchanged when ML Kit is unavailable
+        if (untranslated > leftSentences.size / 2) {
+            Log.w("LocalAlignment", "ML Kit unavailable ($untranslated/${leftSentences.size} untranslated), not aligning")
+            return null
+        }
+        return withContext(Dispatchers.Default) {
+            LexicalAligner.align(translated, rightSentences).map { it.left to it.right }
+        }
+    }
+
+    /**
+     * Right paragraph matching left paragraph [leftPara], derived from the chapter
+     * sentence alignment. Paragraph indices are the WebView's (one per <p>, like the
+     * compromise.js lists). Null when no alignment is available for the current pair.
+     */
+    private fun alignedRightParagraph(leftPara: Int): Int? {
+        val s = _state.value
+        val leftChapter = s.leftBook?.chapters?.getOrNull(s.leftPosition.chapterIndex) ?: return null
+        val rightChapter = s.rightBook?.chapters?.getOrNull(s.rightPosition.chapterIndex) ?: return null
+        if (alignmentByLeft.isEmpty() || currentAlignmentKey != alignmentCacheKey(leftChapter, rightChapter)) return null
+        if (leftPara !in currentLeftSentencesPerPara.indices) return null
+
+        val start = currentLeftSentencesPerPara.take(leftPara).sum()
+        val end = start + currentLeftSentencesPerPara[leftPara]
+        // First aligned sentence of the paragraph; if none is aligned, the nearest aligned one
+        val rightGlobal = (start until end).firstNotNullOfOrNull { alignmentByLeft[it]?.firstOrNull() }
+            ?: (1..50).firstNotNullOfOrNull { d ->
+                alignmentByLeft[start - d]?.lastOrNull() ?: alignmentByLeft[end - 1 + d]?.firstOrNull()
+            }
+            ?: return null
+
+        var acc = 0
+        for ((p, count) in currentRightSentencesPerPara.withIndex()) {
+            acc += count
+            if (rightGlobal < acc) return p
+        }
+        return null
+    }
+
+    private fun encodePairs(pairs: List<Pair<Int, Int>>): String =
+        pairs.joinToString(";") { "${it.first}:${it.second}" }
+
+    private fun decodePairs(text: String): List<Pair<Int, Int>> =
+        text.split(";").mapNotNull { item ->
+            val parts = item.split(":")
+            val l = parts.getOrNull(0)?.toIntOrNull()
+            val r = parts.getOrNull(1)?.toIntOrNull()
+            if (l != null && r != null) l to r else null
+        }
+
+    // --- Chapter map ---
+
+    private fun computeChapterMap() {
+        val s = _state.value
+        val leftBook = s.leftBook
+        val rightBook = s.rightBook
+        if (s.isSingleBookMode || leftBook == null || rightBook == null) {
+            chapterMap = null
+            return
+        }
+        val forced = chapterOverrides
+        chapterMapJob?.cancel()
+        chapterMapJob = viewModelScope.launch {
+            val map = withContext(Dispatchers.Default) {
+                ChapterMatcher.match(
+                    leftBook.chapters.map { it.toChapterInfo() },
+                    rightBook.chapters.map { it.toChapterInfo() },
+                    forced
+                )
+            }
+            chapterMap = map
+            Log.d("ChapterMap", "Left→Right: ${map.withIndex().joinToString { "${it.index}→${it.value}" }}")
+        }
+    }
+
+    private fun Chapter.toChapterInfo() = ChapterMatcher.ChapterInfo(
+        textLength = htmlContent.replace(HTML_TAG, " ").replace(WHITESPACE, " ").trim().length,
+        title = title
+    )
+
+    /** Right chapter mapped to left chapter [left], or null if unknown/unmatched. */
+    private fun mappedRightChapter(left: Int): Int? {
+        val total = _state.value.rightBook?.totalChapters ?: return null
+        return chapterMap?.getOrNull(left)?.takeIf { it in 0 until total }
+    }
+
+    /** Right chapter to show with left chapter [left]: chapter map first, else keep the current offset. */
+    private fun rightChapterFollowing(left: Int, step: Int): Int? {
+        val rightBook = _state.value.rightBook ?: return null
+        mappedRightChapter(left)?.let { return it }
+        val target = _state.value.rightPosition.chapterIndex + step
+        return target.takeIf { it in 0 until rightBook.totalChapters }
+    }
+
+    /** Manual correction: left chapter [left] goes with right chapter [right]. */
+    private fun recordChapterOverride(left: Int, right: Int) {
+        if (mappedRightChapter(left) == right) return
+        // Drop earlier corrections that would contradict this one (the map is monotonic)
+        chapterOverrides = chapterOverrides.filter { (l, r) ->
+            (l < left && r < right) || (l > left && r > right)
+        } + (left to right)
+        Log.d("ChapterMap", "Manual correction: left $left → right $right (overrides=$chapterOverrides)")
+        computeChapterMap()
+        saveCurrentSession()
+    }
+
+    private fun encodeChapterOverrides(map: Map<Int, Int>): String =
+        map.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" }
+
+    private fun decodeChapterOverrides(text: String): Map<Int, Int> =
+        text.split(",").mapNotNull { item ->
+            val parts = item.split(":")
+            val l = parts.getOrNull(0)?.toIntOrNull()
+            val r = parts.getOrNull(1)?.toIntOrNull()
+            if (l != null && r != null) l to r else null
+        }.toMap()
 
     // --- TTS Methods ---
 
@@ -1185,12 +1431,13 @@ class ReaderViewModel @Inject constructor(
 
         // Calculate expected right paragraph using anchor (if available)
         val currentState = _state.value
-        val expectedRightPara = if (currentState.syncAnchorLeftIndex >= 0 && currentState.syncAnchorRightIndex >= 0) {
-            val offset = nextParagraphIndex - currentState.syncAnchorLeftIndex
-            (currentState.syncAnchorRightIndex + offset).coerceAtLeast(0)
-        } else {
-            currentState.rightParagraphIndex + 1 // fallback
-        }
+        val expectedRightPara = alignedRightParagraph(nextParagraphIndex)
+            ?: if (currentState.syncAnchorLeftIndex >= 0 && currentState.syncAnchorRightIndex >= 0) {
+                val offset = nextParagraphIndex - currentState.syncAnchorLeftIndex
+                (currentState.syncAnchorRightIndex + offset).coerceAtLeast(0)
+            } else {
+                currentState.rightParagraphIndex + 1 // fallback
+            }
 
         // Reset sentence tracking atomically and ask the WebView to scroll to the next paragraph
         _state.update { state ->
@@ -1211,15 +1458,10 @@ class ReaderViewModel @Inject constructor(
         val currentChapter = _state.value.leftPosition.chapterIndex
         val totalChapters = leftBook.totalChapters
         if (currentChapter < totalChapters - 1) {
-            navigateToChapter(true, currentChapter + 1)
-            // Also advance right book if it's loaded
+            setChapter(true, currentChapter + 1)
+            // Also advance right book if it's loaded (chapter map, else keep the offset)
             val rightBook = _state.value.rightBook
-            if (rightBook != null) {
-                val rightChapter = _state.value.rightPosition.chapterIndex
-                if (rightChapter < rightBook.totalChapters - 1) {
-                    navigateToChapter(false, rightChapter + 1)
-                }
-            }
+            rightChapterFollowing(currentChapter + 1, step = 1)?.let { setChapter(false, it) }
             _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
             // Reset expected TTS position for paragraph 0 of the new chapter, otherwise
             // every WebView callback would be rejected as "spurious" (TTS stall at chapter end)
@@ -1502,11 +1744,11 @@ class ReaderViewModel @Inject constructor(
         val canAdvanceRight = rightBook != null && rightChapter < rightTotal - 1
 
         if (canAdvanceLeft) {
-            navigateToChapter(true, leftChapter + 1)
+            setChapter(true, leftChapter + 1)
             _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
-        }
-        if (canAdvanceRight) {
-            navigateToChapter(false, rightChapter + 1)
+            rightChapterFollowing(leftChapter + 1, step = 1)?.let { setChapter(false, it) }
+        } else if (canAdvanceRight) {
+            setChapter(false, rightChapter + 1)
         }
 
         // Refresh TTS if playing
@@ -1536,11 +1778,11 @@ class ReaderViewModel @Inject constructor(
         val canGoBackRight = rightBook != null && rightChapter > 0
 
         if (canGoBackLeft) {
-            navigateToChapter(true, leftChapter - 1)
+            setChapter(true, leftChapter - 1)
             _state.update { it.copy(leftSentenceIndex = 0, leftSentenceCount = 0) }
-        }
-        if (canGoBackRight) {
-            navigateToChapter(false, rightChapter - 1)
+            rightChapterFollowing(leftChapter - 1, step = -1)?.let { setChapter(false, it) }
+        } else if (canGoBackRight) {
+            setChapter(false, rightChapter - 1)
         }
     }
 
@@ -1597,6 +1839,7 @@ class ReaderViewModel @Inject constructor(
 
                 val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
                 val rightBook = session.rightBookUri?.let { bookRepository.loadBookFromUri(it) }
+                chapterOverrides = decodeChapterOverrides(session.chapterOverrides)
 
                 _state.update {
                     it.copy(
@@ -1662,7 +1905,8 @@ class ReaderViewModel @Inject constructor(
                 autoTranslationEnabled = s.autoTranslationEnabled,
                 ttsTimeLimitMinutes = s.ttsTimeLimitMinutes,
                 ttsBilingualMode = s.ttsBilingualMode.name,
-                ttsSpeed = s.ttsSpeed
+                ttsSpeed = s.ttsSpeed,
+                chapterOverrides = encodeChapterOverrides(chapterOverrides)
             )
             bookRepository.saveSession(session)
         }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import org.ecos.logic.twinbooks.alignment.AlignmentManager
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
+import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
 import org.ecos.logic.twinbooks.data.local.ReadingSessionDao
 import org.ecos.logic.twinbooks.data.local.TwinBooksDatabase
 import org.ecos.logic.twinbooks.data.repository.BookRepositoryImpl
@@ -36,13 +37,19 @@ object DatabaseModule {
             TwinBooksDatabase.MIGRATION_4_5,
             TwinBooksDatabase.MIGRATION_5_6,
             TwinBooksDatabase.MIGRATION_6_7,
-            TwinBooksDatabase.MIGRATION_7_8
+            TwinBooksDatabase.MIGRATION_7_8,
+            TwinBooksDatabase.MIGRATION_8_9
         ).build()
     }
 
     @Provides
     fun provideReadingSessionDao(database: TwinBooksDatabase): ReadingSessionDao {
         return database.readingSessionDao()
+    }
+
+    @Provides
+    fun provideChapterAlignmentDao(database: TwinBooksDatabase): ChapterAlignmentDao {
+        return database.chapterAlignmentDao()
     }
 }
 

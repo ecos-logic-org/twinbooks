@@ -74,9 +74,9 @@ class TranslationManager @Inject constructor() {
     /**
      * Translate text from English to Spanish
      */
-    suspend fun translate(text: String): String {
+    suspend fun translate(text: String, useCache: Boolean = true): String {
         // Return from cache if available
-        translationCache[text]?.let { return it }
+        if (useCache) translationCache[text]?.let { return it }
         
         if (!_isReady.value || translator == null) {
             Log.d("TranslationManager", "Translator not ready, attempting initialization...")
@@ -90,6 +90,7 @@ class TranslationManager @Inject constructor() {
         return try {
             val result = translator?.translate(text)?.await() ?: text
             
+            if (!useCache) return result
             // Cache the translation
             if (translationCache.size >= cacheMaxSize) {
                 translationCache.keys.first()?.let { translationCache.remove(it) }

@@ -30,5 +30,6 @@ data class ReadingSession(
     val ttsBilingualMode: String = "OFF",
     val ttsSpeed: Float = 1.0f,
     val isSingleBookMode: Boolean = false,
-    val autoTranslationEnabled: Boolean = true
+    val autoTranslationEnabled: Boolean = true,
+    val chapterOverrides: String = ""
 )

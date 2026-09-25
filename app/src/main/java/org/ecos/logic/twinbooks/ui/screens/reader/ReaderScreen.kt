@@ -399,7 +399,7 @@ fun ReaderScreen(
                                     .clickable { viewModel.toggleSync() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (state.isServerAligning) {
+                                if (state.isServerAligning || state.chapterAlignmentProgress >= 0f) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
                                         color = Color(0xFF4CAF50),

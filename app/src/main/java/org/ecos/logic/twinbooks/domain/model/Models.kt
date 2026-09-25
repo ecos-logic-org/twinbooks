@@ -48,6 +48,8 @@ data class ReadingState(
     val ttsSpeed: Float = 1.0f,
     // Server alignment progress indicator
     val isServerAligning: Boolean = false,
+    // Local chapter alignment (ML Kit + lexical DP) progress: -1 = idle, 0..1 = translating
+    val chapterAlignmentProgress: Float = -1f,
     // Single-book mode: one book full screen, Spanish comes from on-device ML Kit translation
     val isSingleBookMode: Boolean = false,
     val autoTranslationEnabled: Boolean = true,

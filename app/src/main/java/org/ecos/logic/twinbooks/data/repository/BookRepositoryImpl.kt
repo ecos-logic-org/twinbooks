@@ -67,7 +67,8 @@ class BookRepositoryImpl @Inject constructor(
         ttsBilingualMode = ttsBilingualMode,
         ttsSpeed = ttsSpeed,
         isSingleBookMode = isSingleBookMode,
-        autoTranslationEnabled = autoTranslationEnabled
+        autoTranslationEnabled = autoTranslationEnabled,
+        chapterOverrides = chapterOverrides
     )
 
     private fun ReadingSession.toEntity() = ReadingSessionEntity(
@@ -91,6 +92,7 @@ class BookRepositoryImpl @Inject constructor(
         ttsBilingualMode = ttsBilingualMode,
         ttsSpeed = ttsSpeed,
         isSingleBookMode = isSingleBookMode,
-        autoTranslationEnabled = autoTranslationEnabled
+        autoTranslationEnabled = autoTranslationEnabled,
+        chapterOverrides = chapterOverrides
     )
 }

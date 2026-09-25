@@ -6,12 +6,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ReadingSessionEntity::class],
-    version = 8,
+    entities = [ReadingSessionEntity::class, ChapterAlignmentEntity::class],
+    version = 9,
     exportSchema = false
 )
 abstract class TwinBooksDatabase : RoomDatabase() {
     abstract fun readingSessionDao(): ReadingSessionDao
+    abstract fun chapterAlignmentDao(): ChapterAlignmentDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -61,6 +62,21 @@ abstract class TwinBooksDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN isSingleBookMode INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN autoTranslationEnabled INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        // v8->9: alineación local por capítulo + correcciones manuales del mapa de capítulos
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS chapter_alignments (" +
+                        "leftBookUri TEXT NOT NULL, rightBookUri TEXT NOT NULL, " +
+                        "leftChapterIndex INTEGER NOT NULL, rightChapterIndex INTEGER NOT NULL, " +
+                        "leftCount INTEGER NOT NULL, rightCount INTEGER NOT NULL, " +
+                        "pairs TEXT NOT NULL, createdAt INTEGER NOT NULL, " +
+                        "PRIMARY KEY(leftBookUri, rightBookUri, leftChapterIndex, rightChapterIndex))"
+                )
+                db.execSQL("ALTER TABLE reading_sessions ADD COLUMN chapterOverrides TEXT NOT NULL DEFAULT ''")
             }
         }
     }
