@@ -52,7 +52,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,16 +65,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.ui.viewmodel.BookshelfViewModel
 import org.ecos.logic.twinbooks.ui.viewmodel.SessionWithCover
-import androidx.compose.ui.graphics.drawscope.DrawScope
 
-// Simple Painter wrapper for ImageBitmap
-private class BitmapPainter(private val bitmap: ImageBitmap) : Painter() {
-    override val intrinsicSize = androidx.compose.ui.geometry.Size(bitmap.width.toFloat(), bitmap.height.toFloat())
-
-    override fun DrawScope.onDraw() {
-        drawImage(bitmap)
-    }
-}
 
 /**
  * Decodes a base64 data URI (format: data:mimeType;base64,<data>) to an ImageBitmap.
@@ -365,7 +355,7 @@ private fun SessionCard(
                             .border(1.dp, Color(0xFF444444))
                     ) {
                         androidx.compose.foundation.Image(
-                            painter = remember { BitmapPainter(coverBitmap) },
+                            bitmap = coverBitmap,
                             contentDescription = session.leftTitle,
                             contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
