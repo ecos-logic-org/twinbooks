@@ -19,6 +19,7 @@ import org.ecos.logic.twinbooks.alignment.AlignmentManager
 import org.ecos.logic.twinbooks.alignment.ChapterMatcher
 import org.ecos.logic.twinbooks.alignment.LexicalAligner
 import org.ecos.logic.twinbooks.alignment.model.ChapterAlignResponse
+import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.alignment.model.AlignmentResultWrapper
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
 import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
@@ -107,9 +108,14 @@ class ReaderViewModel @Inject constructor(
     var onHighlightRightSentence: ((Int) -> Unit)? = null
     private var currentSessionId: Long = -1
 
+    /** Availability of the alignment server (shown in the reader, drives the fallbacks) */
+    val serverStatus: StateFlow<ServerStatus> = alignmentRepository.status
+    private var serverMonitorJob: Job? = null
+
     fun loadSession(sessionId: Long) {
         currentSessionId = sessionId
         restoreSession(sessionId)
+        startServerMonitor()
         ttsManager.onSentenceComplete = { utteranceId -> onTtsSentenceComplete(utteranceId) }
         ttsManager.init()
         
@@ -591,33 +597,50 @@ class ReaderViewModel @Inject constructor(
      * Called when user presses "retry" button next to sync button.
      */
     fun retryServerAlignment() {
-        val currentState = _state.value
-        if (!currentState.isSynchronized) return
-        
-        val leftBook = currentState.leftBook
-        val rightBook = currentState.rightBook
-        val leftChapterIdx = currentState.leftPosition.chapterIndex
-        val rightChapterIdx = currentState.rightPosition.chapterIndex
-        
-        if (leftBook == null || rightBook == null) return
-        if (leftChapterIdx < 0 || leftChapterIdx >= leftBook.chapters.size) return
-        if (rightChapterIdx < 0 || rightChapterIdx >= rightBook.chapters.size) return
-        
-        val leftChapter = leftBook.chapters[leftChapterIdx]
-        val rightChapter = rightBook.chapters[rightChapterIdx]
-        
         viewModelScope.launch {
             _state.update { it.copy(isServerAligning = true) }
-            
+            serverFailedKey = null
+            val s = _state.value
+            val leftChapter = s.leftBook?.chapters?.getOrNull(s.leftPosition.chapterIndex)
+            val rightChapter = s.rightBook?.chapters?.getOrNull(s.rightPosition.chapterIndex)
+
             // Force a fresh server alignment (bypasses the per-chapter cache)
-            val response = getChapterAlignment(leftChapter, rightChapter, forceRefresh = true)
-            
-            _state.update { it.copy(isServerAligning = false) }
-            
+            val response = if (!s.isSingleBookMode && leftChapter != null && rightChapter != null) {
+                getChapterAlignment(leftChapter, rightChapter, forceRefresh = true)
+            } else null
+
             if (response != null) {
+                storeCurrentAlignment(response.alignment.map { it.leftIdx to it.rightIdx })
                 Log.d("AlignmentRetry", "Server retry succeeded: ${response.alignment.size} pairs")
             } else {
-                Log.w("AlignmentRetry", "Server retry failed (server down or chapter sentences not ready yet)")
+                // No request was possible (sentences not ready) or it failed: refresh the status
+                if (serverStatus.value != ServerStatus.UNAUTHORIZED) alignmentRepository.checkHealth()
+                Log.w("AlignmentRetry", "Server retry failed: status=${serverStatus.value}")
+            }
+            _state.update { it.copy(isServerAligning = false) }
+        }
+    }
+
+    /**
+     * Keeps [serverStatus] fresh while a pair is open (the server goes down now and then):
+     * every minute while it's down, every 5 minutes while it's up. When it comes back, the
+     * failure cache is dropped and the current chapter is asked to the server again.
+     */
+    private fun startServerMonitor() {
+        serverMonitorJob?.cancel()
+        serverMonitorJob = viewModelScope.launch {
+            while (true) {
+                val s = _state.value
+                if (s.rightBook != null && !s.isSingleBookMode) {
+                    val before = serverStatus.value
+                    alignmentRepository.checkHealth()
+                    if (before != ServerStatus.ONLINE && serverStatus.value == ServerStatus.ONLINE) {
+                        Log.d("ServerStatus", "Alignment server is back")
+                        serverFailedKey = null
+                        if (!alignmentFromServer) retryServerAlignment()
+                    }
+                }
+                delay(if (serverStatus.value == ServerStatus.ONLINE) 5 * 60_000L else 60_000L)
             }
         }
     }
@@ -1022,6 +1045,18 @@ class ReaderViewModel @Inject constructor(
                     Log.d("LocalAlignment", "Loaded stored alignment for ch $leftChapterIdx↔$rightChapterIdx")
                     decodePairs(stored.pairs)
                 } else {
+                    // Server first (better model); if it's down, the offline ML Kit + lexical DP.
+                    // Either result is stored, so the chapter stays aligned when the server isn't.
+                    val serverPairs = if (serverStatus.value != ServerStatus.OFFLINE &&
+                        serverStatus.value != ServerStatus.UNAUTHORIZED
+                    ) {
+                        getChapterAlignment(leftChapter, rightChapter)?.alignment?.map { it.leftIdx to it.rightIdx }
+                    } else null
+                    if (serverPairs != null) {
+                        storeCurrentAlignment(serverPairs)
+                        Log.d("LocalAlignment", "Chapter $leftChapterIdx↔$rightChapterIdx aligned by the server: ${serverPairs.size} pairs")
+                        return@launch
+                    }
                     computeLocalAlignment(leftSentences, rightSentences)?.also { computed ->
                         chapterAlignmentDao.upsert(
                             ChapterAlignmentEntity(
@@ -1097,6 +1132,25 @@ class ReaderViewModel @Inject constructor(
             if (rightGlobal < acc) return p
         }
         return null
+    }
+
+    /** Stores [pairs] as the alignment of the chapter pair currently on screen. */
+    private suspend fun storeCurrentAlignment(pairs: List<Pair<Int, Int>>) {
+        val s = _state.value
+        val leftUri = s.leftBookUri ?: return
+        val rightUri = s.rightBookUri ?: return
+        if (currentLeftSentencesPerPara.isEmpty() || currentRightSentencesPerPara.isEmpty()) return
+        chapterAlignmentDao.upsert(
+            ChapterAlignmentEntity(
+                leftBookUri = leftUri,
+                rightBookUri = rightUri,
+                leftChapterIndex = s.leftPosition.chapterIndex,
+                rightChapterIndex = s.rightPosition.chapterIndex,
+                leftCount = currentLeftSentencesPerPara.sum(),
+                rightCount = currentRightSentencesPerPara.sum(),
+                pairs = encodePairs(pairs)
+            )
+        )
     }
 
     private fun encodePairs(pairs: List<Pair<Int, Int>>): String =

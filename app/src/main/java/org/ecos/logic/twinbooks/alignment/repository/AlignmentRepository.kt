@@ -14,6 +14,10 @@ import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.ecos.logic.twinbooks.BuildConfig
 import org.ecos.logic.twinbooks.alignment.api.AlignmentApiService
 import org.ecos.logic.twinbooks.alignment.model.*
 import retrofit2.Response
@@ -33,12 +37,28 @@ class AlignmentRepository @Inject constructor(
         .add(KotlinJsonAdapterFactory())
         .build()
     
+    private val _status = MutableStateFlow(ServerStatus.UNKNOWN)
+    /** Last observed availability of the alignment server */
+    val status: StateFlow<ServerStatus> = _status.asStateFlow()
+
     private val apiService: AlignmentApiService = Retrofit.Builder()
-        .baseUrl(AlignmentApiService.LOCAL_BASE_URL)
+        .baseUrl(BuildConfig.ALIGNMENT_BASE_URL)
         .client(
             OkHttpClient.Builder()
-                .addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BODY })
-                // LAN server: fail fast when away from home (local alignment takes over)
+                // The server requires an API key on the alignment endpoints
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    chain.proceed(
+                        if (BuildConfig.ALIGNMENT_API_KEY.isBlank()) request
+                        else request.newBuilder().header(API_KEY_HEADER, BuildConfig.ALIGNMENT_API_KEY).build()
+                    )
+                }
+                // BASIC: chapter requests carry thousands of sentences, BODY would flood logcat
+                .addInterceptor(HttpLoggingInterceptor().apply {
+                    level = HttpLoggingInterceptor.Level.BASIC
+                    redactHeader(API_KEY_HEADER)
+                })
+                // The server goes down now and then: fail fast, local alignment takes over
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
                 .writeTimeout(60, TimeUnit.SECONDS)
@@ -54,11 +74,17 @@ class AlignmentRepository @Inject constructor(
      * Check if alignment server is available.
      */
     suspend fun checkHealth(): HealthResponse? {
+        if (_status.value != ServerStatus.ONLINE) _status.value = ServerStatus.CHECKING
         return try {
             val response = apiService.healthCheck()
-            if (response.isSuccessful) response.body() else null
+            val body = if (response.isSuccessful) response.body() else null
+            // Health is public: it can't tell a bad key, so don't overwrite UNAUTHORIZED
+            if (body == null) _status.value = ServerStatus.OFFLINE
+            else if (_status.value != ServerStatus.UNAUTHORIZED) _status.value = ServerStatus.ONLINE
+            body
         } catch (e: Exception) {
-            Log.e("AlignmentRepository", "Health check failed", e)
+            Log.w("AlignmentRepository", "Health check failed: ${e.message}")
+            _status.value = ServerStatus.OFFLINE
             null
         }
     }
@@ -84,9 +110,16 @@ class AlignmentRepository @Inject constructor(
         
         return try {
             val response = apiService.alignChapter(request)
+            _status.value = when {
+                response.isSuccessful -> ServerStatus.ONLINE
+                response.code() == 401 || response.code() == 403 -> ServerStatus.UNAUTHORIZED
+                else -> ServerStatus.OFFLINE
+            }
+            if (!response.isSuccessful) Log.w("AlignmentRepository", "Chapter alignment HTTP ${response.code()}")
             if (response.isSuccessful) response.body() else null
         } catch (e: Exception) {
-            Log.e("AlignmentRepository", "Chapter alignment failed", e)
+            Log.w("AlignmentRepository", "Chapter alignment failed: ${e.message}")
+            _status.value = ServerStatus.OFFLINE
             null
         }
     }
@@ -241,6 +274,7 @@ class AlignmentRepository @Inject constructor(
     }
 
     private companion object {
+        const val API_KEY_HEADER = "X-API-Key"
         val EPUB_MEDIA_TYPE = "application/epub+zip".toMediaType()
         val TEXT_MEDIA_TYPE = "text/plain".toMediaType()
     }

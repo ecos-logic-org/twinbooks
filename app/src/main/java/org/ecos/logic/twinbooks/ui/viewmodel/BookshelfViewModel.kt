@@ -14,6 +14,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.StateFlow
+import org.ecos.logic.twinbooks.alignment.model.ServerStatus
+import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
@@ -22,8 +25,16 @@ import javax.inject.Inject
 @HiltViewModel
 class BookshelfViewModel @Inject constructor(
     private val bookRepository: BookRepository,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val alignmentRepository: AlignmentRepository
 ) : ViewModel() {
+
+    /** Availability of the alignment server, shown in the bookshelf header */
+    val serverStatus: StateFlow<ServerStatus> = alignmentRepository.status
+
+    fun checkServer() {
+        viewModelScope.launch { alignmentRepository.checkHealth() }
+    }
 
     /** An EPUB opened from another app, copied into the app's storage, pending the user's choice. */
     data class IncomingBook(
@@ -44,6 +55,7 @@ class BookshelfViewModel @Inject constructor(
 
     init {
         loadSessions()
+        checkServer()
     }
 
     fun loadSessions() {

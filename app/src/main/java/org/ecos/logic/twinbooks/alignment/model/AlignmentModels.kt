@@ -198,3 +198,17 @@ data class CachedAlignment(
     val method: String,
     val timestamp: Long = System.currentTimeMillis(),
 )
+
+/**
+ * Availability of the alignment server, as last observed by the app (health checks and
+ * real alignment calls). Shown in the bookshelf and the reader.
+ */
+enum class ServerStatus {
+    UNKNOWN,
+    CHECKING,
+    ONLINE,
+    /** Not reachable (down, no network, timeout, 5xx) */
+    OFFLINE,
+    /** Reachable but rejects our X-API-Key (missing or wrong key in secrets.properties) */
+    UNAUTHORIZED
+}

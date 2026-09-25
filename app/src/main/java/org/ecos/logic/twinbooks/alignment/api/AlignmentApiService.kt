@@ -41,9 +41,4 @@ interface AlignmentApiService {
     
     @GET("align/health")
     suspend fun healthCheck(): Response<HealthResponse>
-    
-    companion object {
-        const val BASE_URL = "https://your-alignment-server.com/api/v1/"
-        const val LOCAL_BASE_URL = "http://192.168.1.73:8000/api/v1/" // Tu servidor local
-    }
 }

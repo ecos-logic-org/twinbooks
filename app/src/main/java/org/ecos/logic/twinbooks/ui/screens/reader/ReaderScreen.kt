@@ -1,5 +1,12 @@
 package org.ecos.logic.twinbooks.ui.screens.reader
 
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Cloud
+import org.ecos.logic.twinbooks.alignment.model.ServerStatus
+import org.ecos.logic.twinbooks.BuildConfig
 import androidx.core.content.ContextCompat
 import android.util.Log
 import android.os.Build
@@ -180,8 +187,9 @@ fun ReaderScreen(
         Log.d("ReaderScreen", "ACCESS_LOCAL_NETWORK granted=$granted")
     }
     val hasPair = state.rightBook != null && !state.isSingleBookMode
+    val serverOnLan = remember { isLocalNetworkUrl(BuildConfig.ALIGNMENT_BASE_URL) }
     LaunchedEffect(hasPair) {
-        if (hasPair && Build.VERSION.SDK_INT >= 37 &&
+        if (hasPair && serverOnLan && Build.VERSION.SDK_INT >= 37 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_LOCAL_NETWORK) !=
             PackageManager.PERMISSION_GRANTED
         ) {
@@ -199,6 +207,24 @@ fun ReaderScreen(
         if (state.resyncRightTrigger > 0 && state.isSynchronized && state.leftParagraphIndex >= 0) {
             viewModel.findAndSyncBestMatch(state.leftParagraphIndex) { scrollToRightIndex = it }
         }
+    }
+
+    // Tell the user when the alignment server can't be reached (the app keeps working with
+    // the local alignment, but the quality is lower)
+    val serverStatus by viewModel.serverStatus.collectAsState()
+    var lastNotifiedServerStatus by remember { mutableStateOf<ServerStatus?>(null) }
+    LaunchedEffect(serverStatus, hasPair) {
+        if (!hasPair || serverStatus == lastNotifiedServerStatus) return@LaunchedEffect
+        val message = when (serverStatus) {
+            ServerStatus.OFFLINE -> "No se puede conectar con el servidor de alineación. Se usa la alineación local."
+            ServerStatus.UNAUTHORIZED -> "El servidor de alineación rechaza la clave de API (revisa secrets.properties)."
+            ServerStatus.ONLINE -> if (lastNotifiedServerStatus == ServerStatus.OFFLINE ||
+                lastNotifiedServerStatus == ServerStatus.UNAUTHORIZED
+            ) "Servidor de alineación disponible de nuevo." else null
+            else -> return@LaunchedEffect
+        }
+        lastNotifiedServerStatus = serverStatus
+        message?.let { snackbarHostState.showSnackbar(it) }
     }
 
     LaunchedEffect(state.errorMessage) {
@@ -452,7 +478,7 @@ fun ReaderScreen(
                                     .clickable { viewModel.toggleSync() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (state.isServerAligning || state.chapterAlignmentProgress >= 0f) {
+                                if (state.chapterAlignmentProgress >= 0f) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
                                         color = Color(0xFF4CAF50),
@@ -467,25 +493,31 @@ fun ReaderScreen(
                                     )
                                 }
                             }
-                            // Retry alignment button (only when sync is ON) - BELOW sync button
-                            if (state.isSynchronized) {
+                            // Alignment server status (tap = retry the current chapter) - BELOW sync button
+                            if (state.rightBook != null) {
+                                val (serverIcon, serverTint, serverLabel) = serverStatusLook(serverStatus)
                                 Box(
                                     modifier = Modifier
                                         .size(32.dp)
-                                        .background(
-                                            Color(0xFF2A2A2A),
-                                            RoundedCornerShape(6.dp)
-                                        )
-                                        .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                                        .border(1.dp, serverTint.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
                                         .clickable { viewModel.retryServerAlignment() },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Link,
-                                        contentDescription = "Reintentar alineación del servidor",
-                                        tint = Color(0xFFFF9800), // Amber para diferenciar del sync (verde)
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    if (state.isServerAligning) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = serverTint,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = serverIcon,
+                                            contentDescription = "$serverLabel. Toca para reintentar",
+                                            tint = serverTint,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1153,4 +1185,19 @@ private fun ChapterPairingBanner(
             Text(text = "Ahora no", color = Color(0xFF9E9E9E), fontSize = 14.sp)
         }
     }
+}
+
+/** Icon, colour and label for the alignment server status. */
+internal fun serverStatusLook(status: ServerStatus): Triple<ImageVector, Color, String> = when (status) {
+    ServerStatus.ONLINE -> Triple(Icons.Default.Cloud, Color(0xFF66BB6A), "Servidor de alineación disponible")
+    ServerStatus.OFFLINE -> Triple(Icons.Default.CloudOff, Color(0xFFEF5350), "Servidor de alineación no disponible")
+    ServerStatus.UNAUTHORIZED -> Triple(Icons.Default.Key, Color(0xFFFFA726), "Clave de API del servidor no válida")
+    ServerStatus.CHECKING, ServerStatus.UNKNOWN -> Triple(Icons.Default.CloudSync, Color(0xFF9E9E9E), "Comprobando el servidor de alineación")
+}
+
+/** True for http(s) URLs pointing at a private LAN address (needs ACCESS_LOCAL_NETWORK). */
+private fun isLocalNetworkUrl(url: String): Boolean {
+    val host = Uri.parse(url).host ?: return false
+    return host == "localhost" ||
+        Regex("""^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)""").containsMatchIn(host)
 }

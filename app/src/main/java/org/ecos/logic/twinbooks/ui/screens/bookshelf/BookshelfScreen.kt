@@ -1,5 +1,7 @@
 package org.ecos.logic.twinbooks.ui.screens.bookshelf
 
+import org.ecos.logic.twinbooks.ui.screens.reader.serverStatusLook
+import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -109,6 +111,7 @@ fun BookshelfScreen(
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val incomingBook by viewModel.incomingBook.collectAsState()
+    val serverStatus by viewModel.serverStatus.collectAsState()
 
     LaunchedEffect(incomingBookUri) {
         incomingBookUri?.let {
@@ -182,12 +185,18 @@ fun BookshelfScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "📚 Estantería",
-                fontSize = 28.sp,
-                color = Color.White,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "📚 Estantería",
+                    fontSize = 28.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                ServerStatusChip(status = serverStatus, onClick = { viewModel.checkServer() })
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Pair EN/ES button
                 Button(onClick = { showNewPairDialog = true }) {
@@ -785,5 +794,23 @@ private fun IncomingBookOption(
             Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Text(subtitle, color = Color(0xFF9E9E9E), fontSize = 13.sp)
         }
+    }
+}
+
+/** Alignment server availability; tap to check again. */
+@Composable
+private fun ServerStatusChip(status: ServerStatus, onClick: () -> Unit) {
+    val (icon, tint, label) = serverStatusLook(status)
+    Row(
+        modifier = Modifier
+            .background(Color(0xFF1E1E1E), RoundedCornerShape(16.dp))
+            .border(1.dp, tint.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+        Text(text = label, color = tint, fontSize = 12.sp)
     }
 }

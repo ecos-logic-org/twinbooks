@@ -1,3 +1,17 @@
+import java.util.Properties
+
+// Alignment server settings. The API key must NOT be committed: put it in the untracked
+// secrets.properties (alignment.apiKey=...) or the TWINBOOKS_API_KEY environment variable.
+val secrets = Properties().apply {
+    rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+val alignmentBaseUrl: String = secrets.getProperty("alignment.baseUrl")
+    ?: System.getenv("TWINBOOKS_BASE_URL")
+    ?: "https://twinbooks.duckdns.org/api/v1/"
+val alignmentApiKey: String = secrets.getProperty("alignment.apiKey")
+    ?: System.getenv("TWINBOOKS_API_KEY")
+    ?: ""
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -18,6 +32,9 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "ALIGNMENT_BASE_URL", "\"$alignmentBaseUrl\"")
+        buildConfigField("String", "ALIGNMENT_API_KEY", "\"$alignmentApiKey\"")
     }
 
     buildTypes {
@@ -39,6 +56,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

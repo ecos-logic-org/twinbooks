@@ -3,3 +3,5 @@
 build
 .kotlin
 app/build
+# Alignment server API key (see app/build.gradle.kts)
+secrets.properties
