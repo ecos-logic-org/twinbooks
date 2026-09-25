@@ -46,6 +46,13 @@ data class ReadingState(
     val ttsSpeed: Float = 1.0f,
     // Server alignment progress indicator
     val isServerAligning: Boolean = false,
+    // Single-book mode: one book full screen, Spanish comes from on-device ML Kit translation
+    val isSingleBookMode: Boolean = false,
+    val autoTranslationEnabled: Boolean = true,
+    // Inline translation push into the WebView (bump trigger to insert a translation)
+    val inlineTranslationTrigger: Int = 0,
+    val inlineTranslationSentenceIdx: Int = -1,
+    val inlineTranslationText: String = "",
     // Sync anchor points: set when user manually scrolls right book
     // anchorRight = right paragraph index at the moment of manual scroll
     // anchorLeft = left paragraph index at the moment of manual scroll

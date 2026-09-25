@@ -7,7 +7,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ReadingSessionEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class TwinBooksDatabase : RoomDatabase() {
@@ -53,6 +53,14 @@ abstract class TwinBooksDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("DROP TABLE IF EXISTS sentence_alignments")
+            }
+        }
+
+        // v7->8: modo libro único (un solo libro con traducción automática ML Kit)
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reading_sessions ADD COLUMN isSingleBookMode INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE reading_sessions ADD COLUMN autoTranslationEnabled INTEGER NOT NULL DEFAULT 1")
             }
         }
     }

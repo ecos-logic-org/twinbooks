@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -112,6 +113,10 @@ fun BookshelfScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var sessionToDelete by remember { mutableStateOf<ReadingSession?>(null) }
 
+    var showNewPairDialog by remember { mutableStateOf(false) }
+    var leftBookSelected by remember { mutableStateOf(false) }
+    var rightBookSelected by remember { mutableStateOf(false) }
+
     // Launchers for picking EPUB files
     val leftBookLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -137,9 +142,20 @@ fun BookshelfScreen(
         }
     }
 
-    var showNewPairDialog by remember { mutableStateOf(false) }
-    var leftBookSelected by remember { mutableStateOf(false) }
-    var rightBookSelected by remember { mutableStateOf(false) }
+    val singleBookLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            viewModel.createSingleBook(it.toString())
+            showNewPairDialog = false
+            leftBookSelected = false
+            rightBookSelected = false
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -242,6 +258,9 @@ fun BookshelfScreen(
             },
             leftBookSelected = leftBookSelected,
             rightBookSelected = rightBookSelected,
+            onSingleBookClick = {
+                singleBookLauncher.launch(arrayOf("application/epub+zip"))
+            },
             onConfirm = {
                 if (leftBookSelected && rightBookSelected) {
                     viewModel.createNewPair()
@@ -438,6 +457,7 @@ private fun NewPairDialog(
     onRightBookClick: () -> Unit,
     leftBookSelected: Boolean,
     rightBookSelected: Boolean,
+    onSingleBookClick: () -> Unit,
     onConfirm: () -> Unit
 ) {
     AlertDialog(
@@ -534,6 +554,53 @@ private fun NewPairDialog(
                             Text(
                                 text = if (rightBookSelected) "✓ Seleccionado" else "Toca para seleccionar archivo EPUB (opcional)",
                                 color = if (rightBookSelected) Color(0xFF81C784) else Color(0xFF888888),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "— o bien —",
+                    color = Color(0xFF666666),
+                    fontSize = 12.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Single-book selector: creates the session in single-book mode
+                // (full screen + on-device automatic translation, no second book)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF123B36), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFF26A69A), RoundedCornerShape(8.dp))
+                        .padding(16.dp)
+                        .clickable { onSingleBookClick() },
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Translate,
+                            contentDescription = "Single book",
+                            tint = Color(0xFF80CBC4),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "Un solo libro",
+                                color = Color(0xFF80CBC4),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Traducción automática al castellano, en pantalla completa",
+                                color = Color(0xFF888888),
                                 fontSize = 12.sp
                             )
                         }

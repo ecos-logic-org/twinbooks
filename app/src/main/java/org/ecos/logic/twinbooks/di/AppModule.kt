@@ -35,7 +35,8 @@ object DatabaseModule {
             TwinBooksDatabase.MIGRATION_3_4,
             TwinBooksDatabase.MIGRATION_4_5,
             TwinBooksDatabase.MIGRATION_5_6,
-            TwinBooksDatabase.MIGRATION_6_7
+            TwinBooksDatabase.MIGRATION_6_7,
+            TwinBooksDatabase.MIGRATION_7_8
         ).build()
     }
 

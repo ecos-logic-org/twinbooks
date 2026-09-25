@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.AlertDialog
@@ -155,6 +156,15 @@ fun ReaderScreen(
         }
     }
 
+    val singleBookLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let {
+            persistUriPermission(context, it)
+            viewModel.loadSingleBook(it)
+        }
+    }
+
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -179,10 +189,13 @@ fun ReaderScreen(
                     .statusBarsPadding()
                     .navigationBarsPadding()
             ) {
-            // Left panel
+            // Left panel (full width in single-book mode, half when paired with a right book)
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.5f)
+                    .then(
+                        if (state.isSingleBookMode) Modifier.weight(1f)
+                        else Modifier.fillMaxWidth(0.5f)
+                    )
                     .fillMaxHeight()
                     .background(Color.Black)
             ) {
@@ -281,6 +294,9 @@ fun ReaderScreen(
                         onChapterSentences = { chapter, json ->
                             viewModel.onLeftChapterSentences(chapter, json)
                         },
+                        inlineTranslationTrigger = state.inlineTranslationTrigger,
+                        inlineTranslationSentenceIdx = state.inlineTranslationSentenceIdx,
+                        inlineTranslationText = state.inlineTranslationText,
                         onReachedEndOfChapter = {
                             viewModel.advanceTtsToNextChapter()
                         }
@@ -339,54 +355,96 @@ fun ReaderScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    // Sync button + Retry button (vertical layout)
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Sync button
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(
-                                    if (state.isSynchronized) Color(0xFF2E7D32) else Color(0xFF2A2A2A),
-                                    RoundedCornerShape(6.dp)
-                                )
-                                .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
-                                .clickable { viewModel.toggleSync() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (state.isServerAligning) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    color = Color(0xFF4CAF50),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Link,
-                                    contentDescription = "Toggle synchronization",
-                                    tint = if (state.isSynchronized) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        // Retry alignment button (only when sync is ON) - BELOW sync button
-                        if (state.isSynchronized) {
+                    if (state.isSingleBookMode) {
+                        // Single-book mode: no sync (there is no second book).
+                        // Automatic-translation toggle + back-to-two-books button instead.
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Auto-translation toggle
                             Box(
                                 modifier = Modifier
                                     .size(32.dp)
                                     .background(
-                                        Color(0xFF2A2A2A),
+                                        if (state.autoTranslationEnabled) Color(0xFF00695C) else Color(0xFF2A2A2A),
                                         RoundedCornerShape(6.dp)
                                     )
                                     .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
-                                    .clickable { viewModel.retryServerAlignment() },
+                                    .clickable { viewModel.toggleAutoTranslation() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Link,
-                                    contentDescription = "Reintentar alineación del servidor",
-                                    tint = Color(0xFFFF9800), // Amber para diferenciar del sync (verde)
+                                    imageVector = Icons.Default.Translate,
+                                    contentDescription = "Toggle automatic translation",
+                                    tint = if (state.autoTranslationEnabled) Color(0xFF80CBC4) else Color(0xFFB0B0B0),
                                     modifier = Modifier.size(18.dp)
                                 )
+                            }
+                            // Back to two-book mode
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                    .clickable { viewModel.exitSingleBookMode() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ViewColumn,
+                                    contentDescription = "Back to two books",
+                                    tint = Color(0xFFB0B0B0),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        // Sync button + Retry button (vertical layout)
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Sync button
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(
+                                        if (state.isSynchronized) Color(0xFF2E7D32) else Color(0xFF2A2A2A),
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                    .clickable { viewModel.toggleSync() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (state.isServerAligning) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        color = Color(0xFF4CAF50),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Link,
+                                        contentDescription = "Toggle synchronization",
+                                        tint = if (state.isSynchronized) Color(0xFF4CAF50) else Color(0xFFB0B0B0),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            // Retry alignment button (only when sync is ON) - BELOW sync button
+                            if (state.isSynchronized) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(
+                                            Color(0xFF2A2A2A),
+                                            RoundedCornerShape(6.dp)
+                                        )
+                                        .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                        .clickable { viewModel.retryServerAlignment() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Link,
+                                        contentDescription = "Reintentar alineación del servidor",
+                                        tint = Color(0xFFFF9800), // Amber para diferenciar del sync (verde)
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -417,7 +475,8 @@ fun ReaderScreen(
                 }
             }
 
-            // Right panel
+            // Right panel (hidden in single-book mode: the divider becomes the right edge)
+            if (!state.isSingleBookMode) {
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -498,7 +557,27 @@ fun ReaderScreen(
                     )
                 }
             }
+            }
         }  // End Row
+
+            // Third loading option: a single book with on-device automatic translation
+            if (state.rightBook == null && !state.isSingleBookMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF111111))
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    TextButton(onClick = { singleBookLauncher.launch(arrayOf("application/epub+zip")) }) {
+                        Text(
+                            text = "Un solo libro · traducción automática",
+                            color = Color(0xFF80CBC4),
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
     }  // End Column
 
     // Unified horizontal bar - overlay positioned between text content and thin progress bar, crosses both panels

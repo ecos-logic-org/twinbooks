@@ -75,7 +75,10 @@ fun BookPanel(
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
     highlightSentenceIndex: Int = -1, // For right book: highlight specific sentence during TTS
-    onChapterSentences: (chapterIndex: Int, sentencesJson: String) -> Unit = { _, _ -> }
+    onChapterSentences: (chapterIndex: Int, sentencesJson: String) -> Unit = { _, _ -> },
+    inlineTranslationTrigger: Int = 0,
+    inlineTranslationSentenceIdx: Int = -1,
+    inlineTranslationText: String = ""
 ) {
     var showToc by remember { mutableStateOf(false) }
     val currentChapter = book.chapters.getOrNull(position.chapterIndex)
@@ -115,7 +118,10 @@ fun BookPanel(
                     ttsRefreshTrigger = ttsRefreshTrigger,
                     ttsScrollToNextParagraphTrigger = ttsScrollToNextParagraphTrigger,
                     // Bind the sentence list push to this panel's current chapter
-                    onChapterSentences = { json -> onChapterSentences(position.chapterIndex, json) }
+                    onChapterSentences = { json -> onChapterSentences(position.chapterIndex, json) },
+                    inlineTranslationTrigger = inlineTranslationTrigger,
+                    inlineTranslationSentenceIdx = inlineTranslationSentenceIdx,
+                    inlineTranslationText = inlineTranslationText
                 )
             }
         }
@@ -173,7 +179,10 @@ private fun ChapterWebView(
     scrollToParagraphIndex: Int? = null,
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
-    onChapterSentences: (sentencesJson: String) -> Unit = {}
+    onChapterSentences: (sentencesJson: String) -> Unit = {},
+    inlineTranslationTrigger: Int = 0,
+    inlineTranslationSentenceIdx: Int = -1,
+    inlineTranslationText: String = ""
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -197,6 +206,7 @@ private fun ChapterWebView(
     var lastAppliedTtsRefresh by remember { mutableIntStateOf(0) }
     var lastAppliedTtsScrollToNext by remember { mutableIntStateOf(0) }
     var lastAppliedHighlightSentenceIndex by remember { mutableIntStateOf(-1) }
+    var lastAppliedInlineTranslation by remember { mutableIntStateOf(0) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -259,6 +269,15 @@ private fun ChapterWebView(
                     border-radius: 2px;
                     padding: 0 2px;
                 }
+                .auto-translation {
+                    display: block;
+                    color: #80CBC4 !important;
+                    font-size: 0.92em;
+                    font-style: italic;
+                    margin: 2px 0 6px 0;
+                    padding-left: 10px;
+                    border-left: 2px solid #26A69A !important;
+                }
                 ::selection {
                     background-color: rgba(66, 165, 245, 0.4) !important;
                     color: #FFFFFF !important;
@@ -285,9 +304,9 @@ private fun ChapterWebView(
                         window.highlighted.classList.add('reading-zone-highlight');
                         
                         if (window.ParagraphBridge) {
-                            var text = window.highlighted.textContent.trim().substring(0, 100);
+                            var text = getParagraphText(window.highlighted).trim().substring(0, 100);
                             window.ParagraphBridge.onParagraphFound(text, i);
-                            var allSentences = window.getSentences(window.highlighted.textContent);
+                            var allSentences = getParagraphSentences(window.highlighted);
                             window.ParagraphBridge.onSentenceCountFound(allSentences.length);
                             setTimeout(function() { window.highlightSentence(0); }, 50);
                         }
@@ -329,9 +348,9 @@ private fun ChapterWebView(
                 window.highlighted.classList.add('reading-zone-highlight');
                 
                 if (window.ParagraphBridge) {
-                    var text = window.highlighted.textContent.trim().substring(0, 100);
+                    var text = getParagraphText(window.highlighted).trim().substring(0, 100);
                     window.ParagraphBridge.onParagraphFound(text, index);
-                    var allSentences = window.getSentences(window.highlighted.textContent);
+                    var allSentences = getParagraphSentences(window.highlighted);
                     window.ParagraphBridge.onSentenceCountFound(allSentences.length);
                     setTimeout(function() { window.highlightSentence(0); }, 50);
                 }
@@ -387,6 +406,98 @@ private fun ChapterWebView(
                 return [text];
             }
 
+            // --- Inline translations (single-book mode) --------------------------------
+            // Translations are inserted INSIDE the paragraph DOM, so every path that splits
+            // sentences or reports paragraph text must exclude them: work on a clean clone.
+            function getCleanParagraphClone(paragraph) {
+                var clone = paragraph.cloneNode(true);
+                var trs = clone.querySelectorAll('.auto-translation');
+                for (var i = 0; i < trs.length; i++) {
+                    if (trs[i].parentNode) trs[i].parentNode.removeChild(trs[i]);
+                }
+                return clone;
+            }
+
+            function getParagraphText(paragraph) {
+                return getCleanParagraphClone(paragraph).textContent;
+            }
+
+            function getParagraphSentences(paragraph) {
+                return getSentences(getParagraphText(paragraph));
+            }
+
+            // Locate the DOM range of sentences[index] inside paragraph.
+            // The TreeWalker skips .auto-translation nodes so character offsets
+            // (computed on the clean text) stay aligned with the real text nodes.
+            function getSentenceRange(paragraph, sentences, index) {
+                var text = getParagraphText(paragraph);
+                var searchFrom = 0;
+                var start = -1;
+                for (var i = 0; i <= index; i++) {
+                    var pos = text.indexOf(sentences[i], searchFrom);
+                    if (pos === -1) {
+                        pos = text.indexOf(sentences[i].trim(), searchFrom);
+                    }
+                    if (i === index) {
+                        start = pos !== -1 ? pos : searchFrom;
+                    }
+                    searchFrom = pos !== -1 ? pos + sentences[i].length : searchFrom + sentences[i].length;
+                }
+                if (start === -1) return null;
+                var end = start + sentences[index].length;
+
+                var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, {
+                    acceptNode: function(node) {
+                        var p = node.parentNode;
+                        while (p && p !== paragraph) {
+                            if (p.nodeType === 1 && p.classList && p.classList.contains('auto-translation')) {
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            p = p.parentNode;
+                        }
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                });
+                var charCount = 0, startNode = null, startOffsetInNode = 0;
+                var endNode = null, endOffsetInNode = 0;
+                while (walker.nextNode()) {
+                    var node = walker.currentNode;
+                    var len = node.textContent.length;
+                    if (!startNode && charCount + len > start) {
+                        startNode = node;
+                        startOffsetInNode = start - charCount;
+                    }
+                    if (charCount + len >= end) {
+                        endNode = node;
+                        endOffsetInNode = end - charCount;
+                        break;
+                    }
+                    charCount += len;
+                }
+                if (!startNode || !endNode) return null;
+                return { startNode: startNode, startOffset: startOffsetInNode, endNode: endNode, endOffset: endOffsetInNode };
+            }
+
+            // Insert the automatic translation of the CURRENT paragraph right below it
+            // (single-book mode). The node is a SIBLING of the <p>, so paragraph text,
+            // sentence splitting and paragraph indexes are never polluted. Replaces a
+            // previous translation of the same paragraph if present.
+            function insertParagraphTranslation(text) {
+                var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
+                if (!paragraph || !paragraph.parentNode) return false;
+
+                var prev = paragraph.nextElementSibling;
+                if (prev && prev.classList && prev.classList.contains('auto-translation-para')) {
+                    prev.parentNode.removeChild(prev);
+                }
+
+                var div = document.createElement('div');
+                div.className = 'auto-translation auto-translation-para';
+                div.textContent = text;
+                paragraph.parentNode.insertBefore(div, paragraph.nextSibling);
+                return true;
+            }
+
             // Collect the compromise.js sentence list for every paragraph of this chapter
             // and push it to Kotlin. This is the SINGLE source of truth for sentence
             // splitting: TTS indices, Spanish candidates, server alignment and offsets
@@ -395,7 +506,7 @@ private fun ChapterWebView(
                 var out = [];
                 var paras = document.querySelectorAll('p');
                 for (var i = 0; i < paras.length; i++) {
-                    out.push(getSentences(paras[i].textContent));
+                    out.push(getParagraphSentences(paras[i]));
                 }
                 return out;
             }
@@ -413,51 +524,16 @@ private fun ChapterWebView(
                 var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
                 if (!paragraph) return -1;
 
-                var text = paragraph.textContent;
-                var sentences = getSentences(text);
+                var sentences = getParagraphSentences(paragraph);
 
                 if (index < 0 || index >= sentences.length) return sentences.length;
 
-                // Find the real start position by searching for each sentence in the text
-                var searchFrom = 0;
-                var start = -1;
-                for (var i = 0; i <= index; i++) {
-                    var pos = text.indexOf(sentences[i], searchFrom);
-                    if (pos === -1) {
-                        // Fallback: try trimmed version
-                        pos = text.indexOf(sentences[i].trim(), searchFrom);
-                    }
-                    if (i === index) {
-                        start = pos !== -1 ? pos : searchFrom;
-                    }
-                    searchFrom = pos !== -1 ? pos + sentences[i].length : searchFrom + sentences[i].length;
-                }
-                var end = start + sentences[index].length;
-
-                var walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
-                var charCount = 0, startNode = null, startOffsetInNode = 0;
-                var endNode = null, endOffsetInNode = 0;
-
-                while (walker.nextNode()) {
-                    var node = walker.currentNode;
-                    var len = node.textContent.length;
-                    if (!startNode && charCount + len > start) {
-                        startNode = node;
-                        startOffsetInNode = start - charCount;
-                    }
-                    if (charCount + len >= end) {
-                        endNode = node;
-                        endOffsetInNode = end - charCount;
-                        break;
-                    }
-                    charCount += len;
-                }
-
-                if (startNode && endNode) {
+                var r = getSentenceRange(paragraph, sentences, index);
+                if (r) {
                     try {
                         var range = document.createRange();
-                        range.setStart(startNode, startOffsetInNode);
-                        range.setEnd(endNode, endOffsetInNode);
+                        range.setStart(r.startNode, r.startOffset);
+                        range.setEnd(r.endNode, r.endOffset);
                         var sel = window.getSelection();
                         sel.removeAllRanges();
                         sel.addRange(range);
@@ -475,14 +551,13 @@ private fun ChapterWebView(
             function getSentenceCount() {
                 var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
                 if (!paragraph) return 0;
-                var sentences = getSentences(paragraph.textContent);
-                return sentences.length;
+                return getParagraphSentences(paragraph).length;
             }
 
             function getSentenceText(index) {
                 var paragraph = document.querySelector('.reading-zone-highlight') || document.querySelector('.reading-zone-highlight-synced');
                 if (!paragraph) return '';
-                var sentences = getSentences(paragraph.textContent);
+                var sentences = getParagraphSentences(paragraph);
                 if (index < 0 || index >= sentences.length) return '';
                 return sentences[index].trim();
             }
@@ -509,10 +584,10 @@ private fun ChapterWebView(
                     window.highlighted.classList.add('reading-zone-highlight');
                     
                     if (window.ParagraphBridge) {
-                        var text = window.highlighted.textContent.trim().substring(0, 100);
+                        var text = getParagraphText(window.highlighted).trim().substring(0, 100);
                         var index = window.getParagraphIndex();
                         window.ParagraphBridge.onParagraphFound(text, index);
-                        var allSentences = window.getSentences(window.highlighted.textContent);
+                        var allSentences = getParagraphSentences(window.highlighted);
                         window.ParagraphBridge.onSentenceCountFound(allSentences.length);
                         setTimeout(function() { window.highlightSentence(0); }, 50);
                     }
@@ -587,10 +662,10 @@ private fun ChapterWebView(
                         window.highlighted.classList.add('reading-zone-highlight');
 
                         if (window.ParagraphBridge) {
-                            var text = window.highlighted.textContent.trim().substring(0, 100);
+                            var text = getParagraphText(window.highlighted).trim().substring(0, 100);
                             var index = getParagraphIndex();
                             window.ParagraphBridge.onParagraphFound(text, index);
-                            var allSentences = getSentences(window.highlighted.textContent);
+                            var allSentences = getParagraphSentences(window.highlighted);
                             window.ParagraphBridge.onSentenceCountFound(
                                 allSentences.length
                             );
@@ -619,10 +694,10 @@ private fun ChapterWebView(
                         window.highlighted.classList.add('reading-zone-highlight');
 
                         if (window.ParagraphBridge) {
-                            var text = clickedElement.textContent.trim().substring(0, 100);
+                            var text = getParagraphText(clickedElement).trim().substring(0, 100);
                             var index = getParagraphIndex();
                             window.ParagraphBridge.onParagraphFound(text, index);
-                            var allSentences = getSentences(clickedElement.textContent);
+                            var allSentences = getParagraphSentences(clickedElement);
                             window.ParagraphBridge.onSentenceCountFound(allSentences.length);
                             setTimeout(function() { highlightSentence(0); }, 50);
                         }
@@ -835,6 +910,21 @@ private fun ChapterWebView(
                         currentOnSentenceCountChanged.value(count)
                     }
                 }
+            }
+
+            // Insert an inline translation below the current paragraph (single-book mode).
+            // Must run BEFORE the scrollToNextParagraph block so the insert targets the
+            // paragraph that is still highlighted.
+            if (inlineTranslationTrigger != lastAppliedInlineTranslation && inlineTranslationText.isNotBlank()) {
+                lastAppliedInlineTranslation = inlineTranslationTrigger
+                val escapedTranslation = inlineTranslationText
+                    .replace("\\", "\\\\")
+                    .replace("'", "\\'")
+                    .replace("\n", " ")
+                    .replace("\r", "")
+                webView.evaluateJavascript(
+                    "insertParagraphTranslation('$escapedTranslation')", null
+                )
             }
 
             if (ttsScrollToNextParagraphTrigger != lastAppliedTtsScrollToNext) {

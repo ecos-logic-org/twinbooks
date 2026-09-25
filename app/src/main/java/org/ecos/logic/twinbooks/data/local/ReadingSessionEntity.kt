@@ -24,5 +24,7 @@ data class ReadingSessionEntity(
     val lastOpenedTimestamp: Long = System.currentTimeMillis(),
     val ttsTimeLimitMinutes: Int = 0,
     val ttsBilingualMode: String = "OFF",
-    val ttsSpeed: Float = 1.0f
+    val ttsSpeed: Float = 1.0f,
+    val isSingleBookMode: Boolean = false,
+    val autoTranslationEnabled: Boolean = true
 )

@@ -65,7 +65,9 @@ class BookRepositoryImpl @Inject constructor(
         syncOffset = syncOffset,
         ttsTimeLimitMinutes = ttsTimeLimitMinutes,
         ttsBilingualMode = ttsBilingualMode,
-        ttsSpeed = ttsSpeed
+        ttsSpeed = ttsSpeed,
+        isSingleBookMode = isSingleBookMode,
+        autoTranslationEnabled = autoTranslationEnabled
     )
 
     private fun ReadingSession.toEntity() = ReadingSessionEntity(
@@ -87,6 +89,8 @@ class BookRepositoryImpl @Inject constructor(
         syncOffset = syncOffset,
         ttsTimeLimitMinutes = ttsTimeLimitMinutes,
         ttsBilingualMode = ttsBilingualMode,
-        ttsSpeed = ttsSpeed
+        ttsSpeed = ttsSpeed,
+        isSingleBookMode = isSingleBookMode,
+        autoTranslationEnabled = autoTranslationEnabled
     )
 }

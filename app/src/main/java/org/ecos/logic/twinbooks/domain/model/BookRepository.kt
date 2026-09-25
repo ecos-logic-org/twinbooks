@@ -28,5 +28,7 @@ data class ReadingSession(
     val syncOffset: Int = 0,
     val ttsTimeLimitMinutes: Int = 0,
     val ttsBilingualMode: String = "OFF",
-    val ttsSpeed: Float = 1.0f
+    val ttsSpeed: Float = 1.0f,
+    val isSingleBookMode: Boolean = false,
+    val autoTranslationEnabled: Boolean = true
 )

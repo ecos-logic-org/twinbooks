@@ -86,6 +86,32 @@ class BookshelfViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Create a session with a SINGLE book: full-screen view, the Spanish side is an
+     * on-device ML Kit translation instead of a second book.
+     */
+    fun createSingleBook(uri: String) {
+        viewModelScope.launch {
+            val book = bookRepository.loadBookFromUri(uri)
+            if (book != null) {
+                val session = ReadingSession(
+                    leftBookUri = uri,
+                    rightBookUri = null,
+                    leftTitle = book.title,
+                    rightTitle = null,
+                    fontSize = 12f,
+                    ttsBilingualMode = "OFF",
+                    isSingleBookMode = true,
+                    autoTranslationEnabled = true
+                )
+                bookRepository.saveSession(session)
+                pendingLeftBookUri = null
+                pendingRightBookUri = null
+                loadSessions()
+            }
+        }
+    }
+
     fun deleteSession(sessionId: Long) {
         viewModelScope.launch {
             bookRepository.deleteSession(sessionId)
