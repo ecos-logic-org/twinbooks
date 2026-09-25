@@ -7,10 +7,11 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
 import org.ecos.logic.twinbooks.alignment.api.AlignmentApiService
@@ -112,18 +113,17 @@ class AlignmentRepository @Inject constructor(
                 val leftPart = MultipartBody.Part.createFormData(
                     "left_book",
                     leftFile.name,
-                    RequestBody.create(MediaType.parse("application/epub+zip"), leftFile)
+                    leftFile.asRequestBody(EPUB_MEDIA_TYPE)
                 )
                 val rightPart = MultipartBody.Part.createFormData(
                     "right_book",
                     rightFile.name,
-                    RequestBody.create(MediaType.parse("application/epub+zip"), rightFile)
+                    rightFile.asRequestBody(EPUB_MEDIA_TYPE)
                 )
                 
-                val langType = MediaType.parse("text/plain")
-                val leftLangBody = RequestBody.create(langType, leftLang)
-                val rightLangBody = RequestBody.create(langType, rightLang)
-                val priorityBody = RequestBody.create(langType, priority)
+                val leftLangBody = leftLang.toRequestBody(TEXT_MEDIA_TYPE)
+                val rightLangBody = rightLang.toRequestBody(TEXT_MEDIA_TYPE)
+                val priorityBody = priority.toRequestBody(TEXT_MEDIA_TYPE)
                 
                 val response = apiService.submitBookAlignment(
                     leftPart, rightPart, leftLangBody, rightLangBody, priorityBody
@@ -238,5 +238,10 @@ class AlignmentRepository @Inject constructor(
     fun setBaseUrl(baseUrl: String) {
         // Would need to recreate Retrofit instance
         Log.w("AlignmentRepository", "Base URL change requires app restart: $baseUrl")
+    }
+
+    private companion object {
+        val EPUB_MEDIA_TYPE = "application/epub+zip".toMediaType()
+        val TEXT_MEDIA_TYPE = "text/plain".toMediaType()
     }
 }

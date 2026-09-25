@@ -1,5 +1,10 @@
 package org.ecos.logic.twinbooks.ui.screens.reader
 
+import androidx.core.content.ContextCompat
+import android.util.Log
+import android.os.Build
+import android.content.pm.PackageManager
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -163,6 +168,24 @@ fun ReaderScreen(
         uri?.let {
             persistUriPermission(context, it)
             viewModel.loadSingleBook(it)
+        }
+    }
+
+    // Android 17+ (targetSdk 37): talking to the LAN alignment server needs the
+    // ACCESS_LOCAL_NETWORK runtime permission. Asked when a pair is open, which is when the
+    // server is used; if denied, the local (offline) alignment is used instead.
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d("ReaderScreen", "ACCESS_LOCAL_NETWORK granted=$granted")
+    }
+    val hasPair = state.rightBook != null && !state.isSingleBookMode
+    LaunchedEffect(hasPair) {
+        if (hasPair && Build.VERSION.SDK_INT >= 37 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_LOCAL_NETWORK) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
         }
     }
 

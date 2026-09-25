@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -9,7 +8,7 @@ plugins {
 
 android {
     namespace = "org.ecos.logic.twinbooks"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.ecos.logic.twinbooks"
@@ -37,9 +36,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 
     buildFeatures {
         compose = true
@@ -97,14 +93,14 @@ dependencies {
     }
 
     // ML Kit Translation (on-device, offline)
-    implementation("com.google.mlkit:translate:17.0.3")
+    implementation(libs.translate)
     
     // Play Services Tasks (for await() extension)
-    implementation("com.google.android.gms:play-services-tasks:18.1.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation(libs.play.services.tasks)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     // MediaPipe Text Embedder (semantic similarity for sync)
-    implementation("com.google.mediapipe:tasks-text:0.10.14")
+    implementation(libs.tasks.text)
 
     // Network (Retrofit + OkHttp + Moshi)
     implementation(libs.retrofit)
