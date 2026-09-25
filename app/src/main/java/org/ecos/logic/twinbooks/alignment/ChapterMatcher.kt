@@ -19,7 +19,10 @@ object ChapterMatcher {
 
     data class ChapterInfo(val textLength: Int, val title: String)
 
-    private const val GAP = -0.25f
+    private const val GAP = -0.1f
+    // Scores are centred on this value, so pairing two unrelated spine items (score ~0)
+    // costs more than leaving both unmatched (2 * GAP)
+    private const val MATCH_THRESHOLD = 0.25
     private const val FORCED_BONUS = 100f
 
     /** @return array indexed by left chapter; value = right chapter, or -1 if unmatched. */
@@ -40,6 +43,8 @@ object ChapterMatcher {
 
         fun score(i: Int, j: Int): Float {
             if (forced[i] == j) return FORCED_BONUS
+            // Publisher boilerplate (Project Gutenberg license) never has a counterpart
+            if (BOILERPLATE.containsMatchIn(left[i].title) || BOILERPLATE.containsMatchIn(right[j].title)) return -1f
             val a = left[i].textLength.coerceAtLeast(1) * ratio
             val b = right[j].textLength.coerceAtLeast(1).toDouble()
             // Tiny spine items (cover, title page) carry little length evidence
@@ -49,7 +54,7 @@ object ChapterMatcher {
             val ln = leftNums[i]
             val rn = rightNums[j]
             if (ln != null && rn != null) s += if (ln == rn) 0.6 else -0.4
-            return s.toFloat()
+            return (s - MATCH_THRESHOLD).toFloat()
         }
 
         val dp = Array(n + 1) { FloatArray(m + 1) }
@@ -76,8 +81,24 @@ object ChapterMatcher {
                 else -> j--
             }
         }
+
+        // A real chapter paired with something of a very different size is not a pair
+        // (typical of 1:N splits, e.g. a whole novella in one EN file vs ES chapters)
+        for (l in map.indices) {
+            val r = map[l]
+            if (r < 0 || forced[l] == r) continue
+            val a = left[l].textLength * ratio
+            val b = right[r].textLength.toDouble()
+            if (maxOf(a, b) >= MIN_CONTENT_LENGTH && abs(ln(a.coerceAtLeast(1.0) / b.coerceAtLeast(1.0))) > ln(MAX_LENGTH_RATIO)) {
+                map[l] = -1
+            }
+        }
         return map
     }
+
+    /** Spine items shorter than this are front/back matter (cover, title page, credits). */
+    const val MIN_CONTENT_LENGTH = 3000
+    private const val MAX_LENGTH_RATIO = 1.8
 
     private val NUMBER_WORDS = mapOf(
         "one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7,
@@ -91,6 +112,7 @@ object ChapterMatcher {
     )
 
     private val ROMAN = Regex("^[ivxlc]+$")
+    private val BOILERPLATE = Regex("gutenberg|licen[cs]e", RegexOption.IGNORE_CASE)
 
     /** First number found in a chapter title: digits, roman numerals or number words (EN/ES). */
     internal fun titleNumber(title: String): Int? {

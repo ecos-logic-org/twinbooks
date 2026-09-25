@@ -68,6 +68,7 @@ import kotlin.text.RegexOption
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.ecos.logic.twinbooks.domain.model.ChapterPairingHint
 import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
 
@@ -361,9 +362,26 @@ fun ReaderScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     if (state.isSingleBookMode) {
-                        // Single-book mode: no sync (there is no second book).
-                        // Automatic-translation toggle only.
+                        // Single-book mode: no sync. Automatic-translation toggle, plus
+                        // "back to two books" when a right book is still paired.
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (state.rightBook != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                                        .border(1.dp, Color(0xFF555555), RoundedCornerShape(6.dp))
+                                        .clickable { viewModel.exitSingleBookMode() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ViewColumn,
+                                        contentDescription = "Volver a dos libros",
+                                        tint = Color(0xFFB0B0B0),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                             // Auto-translation toggle
                             Box(
                                 modifier = Modifier
@@ -568,6 +586,24 @@ fun ReaderScreen(
                 }
             }
     }  // End Column
+
+    // Suggestion when the chapter map says this chapter can't be read side by side (or can again)
+    state.chapterPairingHint?.let { hint ->
+        ChapterPairingBanner(
+            hint = hint,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 12.dp),
+            onAccept = {
+                when (hint) {
+                    ChapterPairingHint.UNPAIRED -> viewModel.switchToAutoTranslation()
+                    ChapterPairingHint.PAIRED_AGAIN -> viewModel.exitSingleBookMode()
+                }
+            },
+            onDismiss = { viewModel.dismissChapterPairingHint() }
+        )
+    }
 
     // Unified horizontal bar - overlay positioned between text content and thin progress bar, crosses both panels
     // Same 12dp horizontal padding as BottomInfoBar for visual alignment
@@ -1043,5 +1079,43 @@ private fun persistUriPermission(context: Context, uri: Uri) {
         )
     } catch (e: Exception) {
         e.printStackTrace()
+    }
+}
+
+@Composable
+private fun ChapterPairingBanner(
+    hint: ChapterPairingHint,
+    modifier: Modifier = Modifier,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val (message, action, icon) = when (hint) {
+        ChapterPairingHint.UNPAIRED -> Triple(
+            "Este capítulo no tiene equivalente en el libro en castellano.",
+            "Usar traducción automática",
+            Icons.Default.Translate
+        )
+        ChapterPairingHint.PAIRED_AGAIN -> Triple(
+            "Este capítulo tiene equivalente en el libro en castellano.",
+            "Volver a dos libros",
+            Icons.Default.ViewColumn
+        )
+    }
+    Row(
+        modifier = modifier
+            .background(Color(0xF0263238), RoundedCornerShape(10.dp))
+            .border(1.dp, Color(0xFF26A69A), RoundedCornerShape(10.dp))
+            .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = Color(0xFF80CBC4), modifier = Modifier.size(20.dp))
+        Text(text = message, color = Color(0xFFE0E0E0), fontSize = 14.sp)
+        TextButton(onClick = onAccept) {
+            Text(text = action, color = Color(0xFF80CBC4), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+        TextButton(onClick = onDismiss) {
+            Text(text = "Ahora no", color = Color(0xFF9E9E9E), fontSize = 14.sp)
+        }
     }
 }

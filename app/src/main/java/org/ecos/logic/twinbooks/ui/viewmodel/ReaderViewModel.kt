@@ -25,6 +25,7 @@ import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
 import org.ecos.logic.twinbooks.data.local.ChapterAlignmentEntity
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
+import org.ecos.logic.twinbooks.domain.model.ChapterPairingHint
 import org.ecos.logic.twinbooks.domain.model.Chapter
 import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
@@ -95,6 +96,12 @@ class ReaderViewModel @Inject constructor(
     private var chapterMap: IntArray? = null
     private var chapterOverrides: Map<Int, Int> = emptyMap()
     private var chapterMapJob: Job? = null
+    // Text length per left chapter (tags stripped), filled with the chapter map
+    private var leftChapterLengths: IntArray? = null
+    // Left chapters where the user dismissed the pairing suggestion (this screen only)
+    private val dismissedPairingHints = mutableSetOf<Int>()
+    // Sync state to restore when coming back from auto-translation to two books
+    private var syncBeforeAutoTranslation = true
     // Callback to highlight sentence in right book
     var onHighlightRightSentence: ((Int) -> Unit)? = null
     private var currentSessionId: Long = -1
@@ -328,16 +335,64 @@ class ReaderViewModel @Inject constructor(
     /** Leave single-book mode: back to the two-panel layout (right panel shows its picker). */
     fun exitSingleBookMode() {
         stopTts()
+        val hasPair = _state.value.rightBook != null
         _state.update {
             it.copy(
                 isSingleBookMode = false,
-                isSynchronized = false,
+                isSynchronized = hasPair && syncBeforeAutoTranslation,
                 syncOffset = 0,
                 syncAnchorLeftIndex = -1,
                 syncAnchorRightIndex = -1
             )
         }
+        // The right book didn't follow while hidden: bring it to the mapped chapter
+        mappedRightChapter(_state.value.leftPosition.chapterIndex)?.let { setChapter(false, it) }
         saveCurrentSession()
+        updateChapterPairingHint()
+    }
+
+    /**
+     * Pair mode → full-screen auto-translation of the left book, keeping the right book
+     * in the session so [exitSingleBookMode] can come back to two books.
+     */
+    fun switchToAutoTranslation() {
+        stopTts()
+        syncBeforeAutoTranslation = _state.value.isSynchronized
+        _state.update {
+            it.copy(
+                isSingleBookMode = true,
+                autoTranslationEnabled = true,
+                isSynchronized = false,
+                syncAnchorLeftIndex = -1,
+                syncAnchorRightIndex = -1
+            )
+        }
+        saveCurrentSession()
+        updateChapterPairingHint()
+    }
+
+    fun dismissChapterPairingHint() {
+        dismissedPairingHints += _state.value.leftPosition.chapterIndex
+        _state.update { it.copy(chapterPairingHint = null) }
+    }
+
+    /**
+     * Suggest auto-translation when the current left chapter is real content without a
+     * counterpart in the right book, and suggest going back once it has one again.
+     */
+    private fun updateChapterPairingHint() {
+        val s = _state.value
+        val left = s.leftPosition.chapterIndex
+        val length = leftChapterLengths?.getOrNull(left) ?: 0
+        val hint = when {
+            s.rightBook == null || chapterMap == null -> null
+            left in dismissedPairingHints -> null
+            length < ChapterMatcher.MIN_CONTENT_LENGTH -> null
+            !s.isSingleBookMode && mappedRightChapter(left) == null -> ChapterPairingHint.UNPAIRED
+            s.isSingleBookMode && mappedRightChapter(left) != null -> ChapterPairingHint.PAIRED_AGAIN
+            else -> null
+        }
+        if (hint != s.chapterPairingHint) _state.update { it.copy(chapterPairingHint = hint) }
     }
 
     fun toggleAutoTranslation() {
@@ -347,6 +402,7 @@ class ReaderViewModel @Inject constructor(
 
     fun updateLeftPosition(chapterIndex: Int, scrollOffset: Int, paragraphText: String = "") {
         val leftBook = _state.value.leftBook ?: return
+        val chapterChanged = chapterIndex != _state.value.leftPosition.chapterIndex
         val progress = calculateProgress(chapterIndex, scrollOffset, leftBook)
         _state.update {
             it.copy(
@@ -359,6 +415,7 @@ class ReaderViewModel @Inject constructor(
             )
         }
         saveCurrentSession()
+        if (chapterChanged) updateChapterPairingHint()
     }
 
     fun updateRightPosition(chapterIndex: Int, scrollOffset: Int, paragraphText: String = "") {
@@ -411,6 +468,7 @@ class ReaderViewModel @Inject constructor(
             }
         }
         saveCurrentSession()
+        if (isLeft) updateChapterPairingHint()
     }
 
     fun clearError() {
@@ -1039,22 +1097,25 @@ class ReaderViewModel @Inject constructor(
         val s = _state.value
         val leftBook = s.leftBook
         val rightBook = s.rightBook
-        if (s.isSingleBookMode || leftBook == null || rightBook == null) {
+        // Also computed in auto-translation mode when a right book is paired, so the
+        // "back to two books" suggestion knows which chapters have a counterpart
+        if (leftBook == null || rightBook == null) {
             chapterMap = null
+            leftChapterLengths = null
+            updateChapterPairingHint()
             return
         }
         val forced = chapterOverrides
         chapterMapJob?.cancel()
         chapterMapJob = viewModelScope.launch {
+            val leftInfo = withContext(Dispatchers.Default) { leftBook.chapters.map { it.toChapterInfo() } }
             val map = withContext(Dispatchers.Default) {
-                ChapterMatcher.match(
-                    leftBook.chapters.map { it.toChapterInfo() },
-                    rightBook.chapters.map { it.toChapterInfo() },
-                    forced
-                )
+                ChapterMatcher.match(leftInfo, rightBook.chapters.map { it.toChapterInfo() }, forced)
             }
             chapterMap = map
+            leftChapterLengths = leftInfo.map { it.textLength }.toIntArray()
             Log.d("ChapterMap", "Left→Right: ${map.withIndex().joinToString { "${it.index}→${it.value}" }}")
+            updateChapterPairingHint()
         }
     }
 

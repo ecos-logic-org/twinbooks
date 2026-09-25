@@ -35,12 +35,13 @@ class EpubParser @Inject constructor(
             // Load TOC from NCX/NAV for proper chapter titles
             val tocMap = buildTocMap(book.tableOfContents.tocReferences, title)
 
+            // book.contents only holds what the spine/TOC/guide reference (no images):
+            // images must come from the full manifest
             val imageResources = mutableMapOf<String, Pair<String, ByteArray>>()
-            for (resource in book.contents) {
-                val mediaType = resource.mediaType?.toString() ?: continue
-                if (mediaType.startsWith("image/")) {
-                    imageResources[resource.href] = Pair(mediaType, resource.data)
-                }
+            for (resource in book.resources.all) {
+                val href = resource.href ?: continue
+                val mediaType = imageMediaType(resource.mediaType?.toString(), href) ?: continue
+                imageResources[href] = Pair(mediaType, resource.data)
             }
 
             val chapters = spineReferences.mapIndexed { index, spineRef ->
@@ -178,27 +179,56 @@ class EpubParser @Inject constructor(
         return clean
     }
 
+    /**
+     * Media type of an image resource. epub4j leaves it null for extensions it doesn't
+     * know (e.g. .webp), so fall back to the file extension.
+     */
+    private fun imageMediaType(declared: String?, href: String): String? {
+        if (declared != null && declared.startsWith("image/")) return declared
+        return when (href.substringAfterLast('.', "").lowercase()) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "svg" -> "image/svg+xml"
+            "webp" -> "image/webp"
+            "bmp" -> "image/bmp"
+            else -> null
+        }
+    }
+
+    /**
+     * Inline every image reference as a data URI (the WebView has no access to the EPUB):
+     * HTML `<img src>` and SVG `<image xlink:href>` / `<image href>`, the latter being how
+     * most EPUBs (Calibre, ePubLibre...) build their cover page.
+     */
     private fun embedImagesAsDataUris(
         html: String,
         baseHref: String,
         imageResources: Map<String, Pair<String, ByteArray>>
     ): String {
-        val imgRegex = Regex("""<img\s[^>]*src=["']([^"']+)["'][^>]*/?>""", RegexOption.IGNORE_CASE)
-        return imgRegex.replace(html) { match ->
-            val fullMatch = match.value
-            val src = match.groupValues[1]
+        return IMAGE_REF.replace(html) { match ->
+            val (prefix, src, quote) = match.destructured
+            if (src.startsWith("data:")) return@replace match.value
 
-            if (src.startsWith("data:")) return@replace fullMatch
-
-            val resolvedHref = resolveRelativePath(baseHref, src)
-            val resource = imageResources[resolvedHref]
-                ?: imageResources[src]
-                ?: return@replace fullMatch
+            val path = src.substringBefore('#')
+            val resource = imageResources[resolveRelativePath(baseHref, Uri.decode(path))]
+                ?: imageResources[resolveRelativePath(baseHref, path)]
+                ?: imageResources[path]
+                ?: return@replace match.value
 
             val (mimeType, data) = resource
             val base64 = Base64.encodeToString(data, Base64.NO_WRAP)
-            fullMatch.replace(src, "data:$mimeType;base64,$base64")
+            "${prefix}data:$mimeType;base64,$base64$quote"
         }
+    }
+
+    private companion object {
+        // Group 1: tag + attribute up to the opening quote, 2: URL, 3: closing quote.
+        // "\bsrc\s*=" doesn't match srcset.
+        val IMAGE_REF = Regex(
+            """(<(?:img|image)\s[^>]*?\b(?:src|xlink:href|href)\s*=\s*["'])([^"']+)(["'])""",
+            RegexOption.IGNORE_CASE
+        )
     }
 
     private fun resolveRelativePath(baseHref: String, relativePath: String): String {

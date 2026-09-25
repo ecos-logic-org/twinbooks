@@ -266,6 +266,17 @@ private fun ChapterWebView(
                 img {
                     max-width: 100%;
                     height: auto;
+                    /* Transparent PNGs are often dark line art (logos, maps, ex libris):
+                       invisible on the black theme without a light backdrop */
+                    background-color: #F2F2F2 !important;
+                    border-radius: 4px;
+                }
+                svg {
+                    /* SVG cover pages (width/height 100%): fit the panel */
+                    display: block;
+                    max-width: 100%;
+                    max-height: 95vh;
+                    margin: 0 auto;
                 }
                 a {
                     color: #90CAF9 !important;

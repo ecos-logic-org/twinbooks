@@ -50,6 +50,8 @@ data class ReadingState(
     val isServerAligning: Boolean = false,
     // Local chapter alignment (ML Kit + lexical DP) progress: -1 = idle, 0..1 = translating
     val chapterAlignmentProgress: Float = -1f,
+    // Suggestion shown when the current chapter can't be paired (or can again)
+    val chapterPairingHint: ChapterPairingHint? = null,
     // Single-book mode: one book full screen, Spanish comes from on-device ML Kit translation
     val isSingleBookMode: Boolean = false,
     val autoTranslationEnabled: Boolean = true,
@@ -70,6 +72,16 @@ data class ReadingState(
     val syncAnchorLeftIndex: Int = -1,
     val syncAnchorRightIndex: Int = -1
 )
+
+/**
+ * Pair-mode suggestions driven by the chapter map (see ChapterMatcher).
+ */
+enum class ChapterPairingHint {
+    /** Pair mode, but this chapter has no counterpart in the right book: offer auto-translation. */
+    UNPAIRED,
+    /** Auto-translation mode with a paired right book, and this chapter has a counterpart again. */
+    PAIRED_AGAIN
+}
 
 /**
  * Bilingual TTS reading modes.
