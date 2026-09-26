@@ -2,14 +2,13 @@ package org.ecos.logic.twinbooks.di
 
 import android.content.Context
 import androidx.room.Room
-import org.ecos.logic.twinbooks.alignment.AlignmentManager
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
 import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
 import org.ecos.logic.twinbooks.data.local.ReadingSessionDao
 import org.ecos.logic.twinbooks.data.local.TwinBooksDatabase
 import org.ecos.logic.twinbooks.data.repository.BookRepositoryImpl
 import org.ecos.logic.twinbooks.domain.model.BookRepository
-import org.ecos.logic.twinbooks.embedding.EmbeddingManager
+import org.ecos.logic.twinbooks.translation.MlKitTranslator
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import dagger.Binds
 import dagger.Module
@@ -60,19 +59,7 @@ object ManagerModule {
     @Provides
     @Singleton
     fun provideTranslationManager(): TranslationManager {
-        return TranslationManager()
-    }
-
-    @Provides
-    @Singleton
-    fun provideEmbeddingManager(@ApplicationContext context: Context): EmbeddingManager {
-        return EmbeddingManager(context)
-    }
-
-    @Provides
-    @Singleton
-    fun provideAlignmentManager(embeddingManager: EmbeddingManager): AlignmentManager {
-        return AlignmentManager(embeddingManager)
+        return TranslationManager(MlKitTranslator())
     }
 
     @Provides

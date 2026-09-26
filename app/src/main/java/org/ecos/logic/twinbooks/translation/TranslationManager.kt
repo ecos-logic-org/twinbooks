@@ -2,72 +2,46 @@ package org.ecos.logic.twinbooks.translation
 
 import android.util.Log
 import kotlin.math.roundToInt
-import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.nl.translate.TranslateLanguage
-import com.google.mlkit.nl.translate.Translation
-import com.google.mlkit.nl.translate.Translator
-import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.tasks.await
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class TranslationManager @Inject constructor() {
+/**
+ * On-device EN → ES translation used when the server can't help: single-book mode
+ * fallback, offline chapter alignment and sentence matching. The engine is pluggable
+ * ([OfflineTranslator]); this class adds the cache and never throws: when translation
+ * is unavailable [translate] returns its input unchanged.
+ */
+class TranslationManager(private val engine: OfflineTranslator) {
 
-    private var translator: Translator? = null
-    
     private val _isReady = MutableStateFlow(false)
     val isReady: StateFlow<Boolean> = _isReady.asStateFlow()
-    
-    private val _isDownloading = MutableStateFlow(false)
-    val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
-    
-    private val _downloadProgress = MutableStateFlow(0f)
-    val downloadProgress: StateFlow<Float> = _downloadProgress.asStateFlow()
+
+    private var isPreparing = false
 
     // Cache for translations to avoid re-translating the same text
     private val translationCache = mutableMapOf<String, String>()
     private val cacheMaxSize = 50
 
     /**
-     * Initialize the translator (English → Spanish)
-     * Downloads the model if not already downloaded
+     * Get the engine ready (downloads the model if not already downloaded).
      */
     suspend fun initialize(): Boolean {
         if (_isReady.value) return true
-        if (_isDownloading.value) return false
+        if (isPreparing) return false
 
         return try {
-            _isDownloading.value = true
-            _downloadProgress.value = 0f
-            Log.d("TranslationManager", "Starting model download...")
-            
-            val options = TranslatorOptions.Builder()
-                .setSourceLanguage(TranslateLanguage.ENGLISH)
-                .setTargetLanguage(TranslateLanguage.SPANISH)
-                .build()
-
-            translator = Translation.getClient(options)
-
-            val conditions = DownloadConditions.Builder()
-                .requireWifi()
-                .build()
-
-            translator?.downloadModelIfNeeded(conditions)?.await()
-            
-            _isReady.value = true
-            _isDownloading.value = false
-            _downloadProgress.value = 1f
-            Log.d("TranslationManager", "Model downloaded and ready")
-            true
+            isPreparing = true
+            Log.d("TranslationManager", "Preparing on-device translator...")
+            _isReady.value = engine.prepare()
+            Log.d("TranslationManager", "On-device translator ready: ${_isReady.value}")
+            _isReady.value
         } catch (e: Exception) {
             Log.e("TranslationManager", "Failed to initialize translator", e)
-            _isDownloading.value = false
             _isReady.value = false
             false
+        } finally {
+            isPreparing = false
         }
     }
 
@@ -78,7 +52,7 @@ class TranslationManager @Inject constructor() {
         // Return from cache if available
         if (useCache) translationCache[text]?.let { return it }
         
-        if (!_isReady.value || translator == null) {
+        if (!_isReady.value) {
             Log.d("TranslationManager", "Translator not ready, attempting initialization...")
             val initialized = initialize()
             if (!initialized) {
@@ -88,12 +62,12 @@ class TranslationManager @Inject constructor() {
         }
 
         return try {
-            val result = translator?.translate(text)?.await() ?: text
+            val result = engine.translate(text)
             
             if (!useCache) return result
             // Cache the translation
             if (translationCache.size >= cacheMaxSize) {
-                translationCache.keys.first()?.let { translationCache.remove(it) }
+                translationCache.remove(translationCache.keys.first())
             }
             translationCache[text] = result
             
@@ -107,7 +81,7 @@ class TranslationManager @Inject constructor() {
     /**
      * Find the best matching paragraph using translation + word overlap analysis.
      * 
-     * Strategy: Translate English → Spanish via ML Kit, then find the Spanish book paragraph
+     * Strategy: Translate English → Spanish on-device, then find the Spanish book paragraph
      * with the most word overlap. Logs detailed comparison for debugging.
      * 
      * @param sourceText The English text to translate and match
@@ -129,14 +103,14 @@ class TranslationManager @Inject constructor() {
         val translatedText = translate(sourceText)
         Log.d("TranslationManager", "=== Word Overlap Analysis ===")
         Log.d("TranslationManager", "Source EN: '${sourceText.take(100)}'")
-        Log.d("TranslationManager", "ML Kit ES: '${translatedText.take(100)}'")
+        Log.d("TranslationManager", "Translated ES: '${translatedText.take(100)}'")
         
-        // Extract ALL words from ML Kit translation (lowercase, no punctuation)
+        // Extract ALL words from the translation (lowercase, no punctuation)
         val translatedWords = translatedText.lowercase()
             .split(Regex("[\\s,;.:\"'!¡?¿()\\[\\]{}]+"))
             .filter { it.length > 1 }
             .toSet()
-        Log.d("TranslationManager", "ML Kit words ($translatedWords.size): $translatedWords")
+        Log.d("TranslationManager", "Translated words (${translatedWords.size}): $translatedWords")
 
         // Search within range
         val start = maxOf(0, startIndex - range)
@@ -191,8 +165,7 @@ class TranslationManager @Inject constructor() {
     }
 
     fun shutdown() {
-        translator?.close()
-        translator = null
+        engine.close()
         _isReady.value = false
         translationCache.clear()
     }

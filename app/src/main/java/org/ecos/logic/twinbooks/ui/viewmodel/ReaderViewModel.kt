@@ -20,8 +20,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
-import org.ecos.logic.twinbooks.alignment.AlignmentManager
 import org.ecos.logic.twinbooks.alignment.ChapterMatcher
 import org.ecos.logic.twinbooks.alignment.LexicalAligner
 import org.ecos.logic.twinbooks.alignment.model.ChapterAlignResponse
@@ -38,7 +36,6 @@ import org.ecos.logic.twinbooks.domain.model.ReadingPosition
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
 import org.ecos.logic.twinbooks.domain.model.ReadingState
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
-import org.ecos.logic.twinbooks.embedding.EmbeddingManager
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import org.ecos.logic.twinbooks.text.SentenceSplitter
 import org.ecos.logic.twinbooks.tts.PlaybackBridge
@@ -47,6 +44,8 @@ import org.ecos.logic.twinbooks.tts.PlaybackInfo
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
+/** Minimum cosine similarity for the server to accept a sentence pair */
+private const val SERVER_ALIGNMENT_MIN_SIMILARITY = 0.3f
 /** Single-book server translations kept in memory (current, next and a few recent paragraphs) */
 private const val SERVER_TRANSLATION_CACHE_SIZE = 20
 /** Back-off before trying the server translator again after a failure */
@@ -62,8 +61,6 @@ class ReaderViewModel @Inject constructor(
     private val bookRepository: BookRepository,
     private val ttsManager: TtsManager,
     private val translationManager: TranslationManager,
-    private val embeddingManager: EmbeddingManager,
-    private val alignmentManager: AlignmentManager,
     private val alignmentRepository: AlignmentRepository,
     private val chapterAlignmentDao: ChapterAlignmentDao,
     private val playbackBridge: PlaybackBridge
@@ -993,7 +990,7 @@ class ReaderViewModel @Inject constructor(
 
     /**
      * Find the best matching Spanish sentence from the synchronized right paragraph
-     * Uses server-side alignment first (highest quality, async), then falls back to local DP, embeddings, translation
+     * Uses server-side alignment first (highest quality, async), then falls back to local DP, translation
      * @param englishSentence The English sentence being spoken
      * @param rightParaIndex Override for right paragraph index (use during paragraph transitions)
      * @return Pair of (spanishSentence, sentenceIndexInParagraph), or null if not found
@@ -1089,20 +1086,7 @@ class ReaderViewModel @Inject constructor(
             }
         }
         
-        // STRATEGY 3: Semantic Embeddings for sentence matching (fallback)
-        if (embeddingManager.isReady.value) {
-            val (bestIndex, score) = embeddingManager.findBestSentenceMatch(
-                sourceSentence = englishSentence,
-                candidateSentences = spanishSentences
-            )
-            Log.d("TtsBilingual", "Embedding fallback: index=$bestIndex, score=${(score * 100).roundToInt()}%")
-            if (score >= EmbeddingManager.MIN_SEMANTIC_SCORE && bestIndex >= 0 && bestIndex < spanishSentences.size) {
-                return SpanishMatch(spanishSentences[bestIndex], paraIndex, bestIndex, bestIndex)
-            }
-            Log.w("TtsBilingual", "Low semantic score ($score), falling back to translation")
-        }
-        
-        // STRATEGY 4: Translation + Word Overlap fallback
+        // STRATEGY 3: Translation + Word Overlap fallback
         val bestIndex = translationManager.findBestMatch(
             sourceText = englishSentence,
             candidates = spanishSentences,
@@ -1165,7 +1149,7 @@ class ReaderViewModel @Inject constructor(
             leftSentences = leftSentences,
             rightSentences = rightSentences,
             method = "dtw",
-            similarityThreshold = EmbeddingManager.MIN_SEMANTIC_SCORE,
+            similarityThreshold = SERVER_ALIGNMENT_MIN_SIMILARITY,
         )
         if (response != null) {
             chapterAlignmentCache = response

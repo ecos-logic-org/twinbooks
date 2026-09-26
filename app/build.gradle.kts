@@ -119,9 +119,6 @@ dependencies {
     implementation(libs.play.services.tasks)
     implementation(libs.kotlinx.coroutines.play.services)
 
-    // MediaPipe Text Embedder (semantic similarity for sync)
-    implementation(libs.tasks.text)
-
     // Network (Retrofit + OkHttp + Moshi)
     implementation(libs.retrofit)
     implementation(libs.retrofit.moshi)
