@@ -1070,8 +1070,9 @@ private fun BottomBar(
                             ) {
                                 val isActive = ttsBilingualMode != TtsBilingualMode.OFF
                                 val alpha = if (isActive) 1f else 0.4f
+                                val esFirst = ttsBilingualMode == TtsBilingualMode.ES_TO_EN
                                 Text(
-                                    text = "\uD83C\uDDEC\uD83C\uDDE7",
+                                    text = if (esFirst) "\uD83C\uDDEA\uD83C\uDDF8" else "\uD83C\uDDEC\uD83C\uDDE7",
                                     fontSize = 13.sp,
                                     modifier = Modifier.graphicsLayer { this.alpha = alpha }
                                 )
@@ -1079,7 +1080,7 @@ private fun BottomBar(
                                     text = when (ttsBilingualMode) {
                                         TtsBilingualMode.OFF -> ""
                                         TtsBilingualMode.EN_TO_ES -> "\u2192"
-                                        TtsBilingualMode.ES_TO_EN -> "\u2190"
+                                        TtsBilingualMode.ES_TO_EN -> "\u2192"
                                         TtsBilingualMode.EN_ES_EN -> "\u21C4"
                                     },
                                     color = if (isActive) Color(0xFFCE93D8) else Color(0xFF555555),
@@ -1088,7 +1089,7 @@ private fun BottomBar(
                                     modifier = Modifier.padding(horizontal = 1.dp)
                                 )
                                 Text(
-                                    text = "\uD83C\uDDEA\uD83C\uDDF8",
+                                    text = if (esFirst) "\uD83C\uDDEC\uD83C\uDDE7" else "\uD83C\uDDEA\uD83C\uDDF8",
                                     fontSize = 13.sp,
                                     modifier = Modifier.graphicsLayer { this.alpha = alpha }
                                 )
@@ -1103,11 +1104,12 @@ private fun BottomBar(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             if (mode != TtsBilingualMode.OFF) {
-                                                Text(text = "\uD83C\uDDEC\uD83C\uDDE7", fontSize = 14.sp)
+                                                val esFirst = mode == TtsBilingualMode.ES_TO_EN
+                                                Text(text = if (esFirst) "\uD83C\uDDEA\uD83C\uDDF8" else "\uD83C\uDDEC\uD83C\uDDE7", fontSize = 14.sp)
                                                 Text(
                                                     text = when (mode) {
                                                         TtsBilingualMode.EN_TO_ES -> " \u2192 "
-                                                        TtsBilingualMode.ES_TO_EN -> " \u2190 "
+                                                        TtsBilingualMode.ES_TO_EN -> " \u2192 "
                                                         TtsBilingualMode.EN_ES_EN -> " \u21C4 "
                                                         else -> ""
                                                     },
@@ -1115,7 +1117,7 @@ private fun BottomBar(
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
-                                                Text(text = "\uD83C\uDDEA\uD83C\uDDF8", fontSize = 14.sp)
+                                                Text(text = if (esFirst) "\uD83C\uDDEC\uD83C\uDDE7" else "\uD83C\uDDEA\uD83C\uDDF8", fontSize = 14.sp)
                                             }
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text(
