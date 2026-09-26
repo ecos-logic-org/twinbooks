@@ -44,6 +44,10 @@ import org.ecos.logic.twinbooks.tts.PlaybackInfo
 import org.ecos.logic.twinbooks.tts.TtsManager
 import javax.inject.Inject
 
+/** Worth sending a request: a server is set up and wasn't found down or rejecting the key */
+private fun ServerStatus.canTry() =
+    this != ServerStatus.OFFLINE && this != ServerStatus.UNAUTHORIZED && this != ServerStatus.DISABLED
+
 /** Minimum cosine similarity for the server to accept a sentence pair */
 private const val SERVER_ALIGNMENT_MIN_SIMILARITY = 0.3f
 /** Single-book server translations kept in memory (current, next and a few recent paragraphs) */
@@ -1211,9 +1215,7 @@ class ReaderViewModel @Inject constructor(
                 } else {
                     // Server first (better model); if it's down, the offline on-device translation + lexical DP.
                     // Either result is stored, so the chapter stays aligned when the server isn't.
-                    val serverPairs = if (serverStatus.value != ServerStatus.OFFLINE &&
-                        serverStatus.value != ServerStatus.UNAUTHORIZED
-                    ) {
+                    val serverPairs = if (serverStatus.value.canTry()) {
                         getChapterAlignment(leftChapter, rightChapter)?.alignment?.map { it.leftIdx to it.rightIdx }
                     } else null
                     if (serverPairs != null) {
@@ -1868,7 +1870,7 @@ class ReaderViewModel @Inject constructor(
     private fun serverTranslationAsync(paraIdx: Int, enSentences: List<String>): Deferred<List<String>?>? {
         val key = serverTranslationKey(paraIdx)
         serverTranslations[key]?.let { return it }
-        if (serverStatus.value == ServerStatus.OFFLINE || serverStatus.value == ServerStatus.UNAUTHORIZED) return null
+        if (!serverStatus.value.canTry()) return null
         if (System.currentTimeMillis() < serverTranslationRetryAt) return null
 
         // Neighbouring paragraphs let the server pick the right grammatical gender.

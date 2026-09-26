@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
+import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
@@ -32,8 +33,31 @@ class BookshelfViewModel @Inject constructor(
     /** Availability of the alignment server, shown in the bookshelf header */
     val serverStatus: StateFlow<ServerStatus> = alignmentRepository.status
 
+    /** Server set up in the settings (disabled = everything on-device) */
+    val serverConfig: StateFlow<ServerConfig> = alignmentRepository.config
+
+    private val _serverTest = MutableStateFlow<ServerStatus?>(null)
+    /** Result of "Probar conexión" in the settings: null = not tested, CHECKING = running */
+    val serverTest = _serverTest.asStateFlow()
+
     fun checkServer() {
         viewModelScope.launch { alignmentRepository.checkHealth() }
+    }
+
+    fun testServer(config: ServerConfig) {
+        _serverTest.value = ServerStatus.CHECKING
+        viewModelScope.launch { _serverTest.value = alignmentRepository.testConnection(config) }
+    }
+
+    /** The settings fields changed: the last test no longer applies */
+    fun clearServerTest() {
+        _serverTest.value = null
+    }
+
+    fun saveServer(config: ServerConfig) {
+        alignmentRepository.updateConfig(config)
+        _serverTest.value = null
+        checkServer()
     }
 
     /** An EPUB opened from another app, copied into the app's storage, pending the user's choice. */

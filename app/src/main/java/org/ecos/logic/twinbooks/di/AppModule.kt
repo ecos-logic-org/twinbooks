@@ -3,6 +3,7 @@ package org.ecos.logic.twinbooks.di
 import android.content.Context
 import androidx.room.Room
 import org.ecos.logic.twinbooks.alignment.repository.AlignmentRepository
+import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
 import org.ecos.logic.twinbooks.data.local.ChapterAlignmentDao
 import org.ecos.logic.twinbooks.data.local.ReadingSessionDao
 import org.ecos.logic.twinbooks.data.local.TwinBooksDatabase
@@ -64,8 +65,17 @@ object ManagerModule {
 
     @Provides
     @Singleton
-    fun provideAlignmentRepository(@ApplicationContext context: Context): AlignmentRepository {
-        return AlignmentRepository(context)
+    fun provideServerSettingsStore(@ApplicationContext context: Context): ServerSettingsStore {
+        return ServerSettingsStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAlignmentRepository(
+        @ApplicationContext context: Context,
+        settings: ServerSettingsStore
+    ): AlignmentRepository {
+        return AlignmentRepository(context, settings)
     }
 }
 

@@ -1,13 +1,16 @@
 import java.util.Properties
 
-// Alignment server settings. The API key must NOT be committed: put it in the untracked
-// secrets.properties (alignment.apiKey=...) or the TWINBOOKS_API_KEY environment variable.
+// Default TwinBooks server (alignment + translation) baked into this build; users can change
+// it in the app. Without one (e.g. F-Droid builds) the app starts with no server and does
+// everything on-device. The API key must NOT be committed: put it in the untracked
+// secrets.properties (alignment.baseUrl=..., alignment.apiKey=...) or the TWINBOOKS_BASE_URL /
+// TWINBOOKS_API_KEY environment variables.
 val secrets = Properties().apply {
     rootProject.file("secrets.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 val alignmentBaseUrl: String = secrets.getProperty("alignment.baseUrl")
     ?: System.getenv("TWINBOOKS_BASE_URL")
-    ?: "https://twinbooks.duckdns.org/api/v1/"
+    ?: ""
 val alignmentApiKey: String = secrets.getProperty("alignment.apiKey")
     ?: System.getenv("TWINBOOKS_API_KEY")
     ?: ""
@@ -141,5 +144,7 @@ dependencies {
     implementation(libs.moshi.kotlin)
     implementation(libs.moshi.adapters)
     implementation(libs.kotlinx.serialization.json)
+
+    testImplementation(libs.junit)
 
     }

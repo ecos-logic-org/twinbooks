@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NavigateNext
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -112,6 +114,9 @@ fun BookshelfScreen(
     val sessions by viewModel.sessions.collectAsState()
     val incomingBook by viewModel.incomingBook.collectAsState()
     val serverStatus by viewModel.serverStatus.collectAsState()
+    val serverConfig by viewModel.serverConfig.collectAsState()
+    val serverTest by viewModel.serverTest.collectAsState()
+    var showServerSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(incomingBookUri) {
         incomingBookUri?.let {
@@ -195,7 +200,10 @@ fun BookshelfScreen(
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
-                ServerStatusChip(status = serverStatus, onClick = { viewModel.checkServer() })
+                // No server set up: nothing to report, everything runs on the device
+                if (serverStatus != ServerStatus.DISABLED) {
+                    ServerStatusChip(status = serverStatus, onClick = { viewModel.checkServer() })
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Pair EN/ES button
@@ -214,6 +222,10 @@ fun BookshelfScreen(
                     Icon(Icons.Default.Translate, contentDescription = "Libro único", tint = Color.White)
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Libro único", fontSize = 13.sp)
+                }
+                // Optional TwinBooks server (alignment + translation)
+                IconButton(onClick = { showServerSettings = true }) {
+                    Icon(Icons.Default.Settings, contentDescription = "Servidor TwinBooks", tint = Color(0xFFB0B0B0))
                 }
             }
         }
@@ -283,6 +295,23 @@ fun BookshelfScreen(
 } // Box
 
     // New pair dialog
+    if (showServerSettings) {
+        ServerSettingsDialog(
+            current = serverConfig,
+            testResult = serverTest,
+            onTest = viewModel::testServer,
+            onEdited = viewModel::clearServerTest,
+            onSave = {
+                viewModel.saveServer(it)
+                showServerSettings = false
+            },
+            onDismiss = {
+                viewModel.clearServerTest()
+                showServerSettings = false
+            }
+        )
+    }
+
     if (showNewPairDialog) {
         NewPairDialog(
             onDismiss = { showNewPairDialog = false },

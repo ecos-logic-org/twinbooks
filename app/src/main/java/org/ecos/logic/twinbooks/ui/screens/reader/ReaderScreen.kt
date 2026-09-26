@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.ViewColumn
@@ -206,7 +207,7 @@ fun ReaderScreen(
         if (!hasPair || serverStatus == lastNotifiedServerStatus) return@LaunchedEffect
         val message = when (serverStatus) {
             ServerStatus.OFFLINE -> "No se puede conectar con el servidor de alineación. Se usa la alineación local."
-            ServerStatus.UNAUTHORIZED -> "El servidor de alineación rechaza la clave de API (revisa secrets.properties)."
+            ServerStatus.UNAUTHORIZED -> "El servidor rechaza la clave de API (revísala en los ajustes del servidor, en la estantería)."
             ServerStatus.ONLINE -> if (lastNotifiedServerStatus == ServerStatus.OFFLINE ||
                 lastNotifiedServerStatus == ServerStatus.UNAUTHORIZED
             ) "Servidor de alineación disponible de nuevo." else null
@@ -228,7 +229,7 @@ fun ReaderScreen(
             lastNotifiedTranslationLabel != TRANSLATION_CHECKING_LABEL
         val message = when (label) {
             TRANSLATION_OK_LABEL -> if (wasFailing) "Servidor de traducción disponible de nuevo." else null
-            TRANSLATION_CHECKING_LABEL -> return@LaunchedEffect
+            TRANSLATION_CHECKING_LABEL, TRANSLATION_ON_DEVICE_LABEL -> return@LaunchedEffect
             else -> "$label. Se usa la traducción del dispositivo."
         }
         lastNotifiedTranslationLabel = label
@@ -478,29 +479,31 @@ fun ReaderScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
-                            // Translation server status (tap = check again and retry the server)
-                            val (translationIcon, translationTint, translationLabel) = translationLook
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
-                                    .border(1.dp, translationTint.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-                                    .clickable { viewModel.retryServerTranslation() },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (state.isServerAligning) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        color = translationTint,
-                                        strokeWidth = 2.dp
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = translationIcon,
-                                        contentDescription = "$translationLabel. Toca para reintentar",
-                                        tint = translationTint,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                            // Translation server status (tap = check again and retry the server); none without a server
+                            if (serverStatus != ServerStatus.DISABLED) {
+                                val (translationIcon, translationTint, translationLabel) = translationLook
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color(0xFF2A2A2A), RoundedCornerShape(6.dp))
+                                        .border(1.dp, translationTint.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                                        .clickable { viewModel.retryServerTranslation() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (state.isServerAligning) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = translationTint,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = translationIcon,
+                                            contentDescription = "$translationLabel. Toca para reintentar",
+                                            tint = translationTint,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -535,7 +538,7 @@ fun ReaderScreen(
                                 }
                             }
                             // Alignment server status (tap = retry the current chapter) - BELOW sync button
-                            if (state.rightBook != null) {
+                            if (state.rightBook != null && serverStatus != ServerStatus.DISABLED) {
                                 val (serverIcon, serverTint, serverLabel) = serverStatusLook(serverStatus)
                                 Box(
                                     modifier = Modifier
@@ -1254,12 +1257,14 @@ private fun ChapterPairingBanner(
 
 private const val TRANSLATION_OK_LABEL = "Servidor de traducción disponible"
 private const val TRANSLATION_CHECKING_LABEL = "Comprobando el servidor de traducción"
+private const val TRANSLATION_ON_DEVICE_LABEL = "Sin servidor: traducción en el dispositivo"
 
 /**
  * Icon, colour and label for the translation server in single-book mode. [failing]: the
  * server answers the health check but the last translation request failed.
  */
 internal fun translationStatusLook(status: ServerStatus, failing: Boolean): Triple<ImageVector, Color, String> = when {
+    status == ServerStatus.DISABLED -> Triple(Icons.Default.PhoneAndroid, Color(0xFF9E9E9E), TRANSLATION_ON_DEVICE_LABEL)
     status == ServerStatus.OFFLINE -> Triple(Icons.Default.CloudOff, Color(0xFFEF5350), "Servidor de traducción no disponible")
     status == ServerStatus.UNAUTHORIZED -> Triple(Icons.Default.Key, Color(0xFFFFA726), "Clave de API del servidor no válida")
     failing -> Triple(Icons.Default.Warning, Color(0xFFFFA726), "El servidor de traducción está dando errores")
@@ -1273,4 +1278,5 @@ internal fun serverStatusLook(status: ServerStatus): Triple<ImageVector, Color, 
     ServerStatus.OFFLINE -> Triple(Icons.Default.CloudOff, Color(0xFFEF5350), "Servidor de alineación no disponible")
     ServerStatus.UNAUTHORIZED -> Triple(Icons.Default.Key, Color(0xFFFFA726), "Clave de API del servidor no válida")
     ServerStatus.CHECKING, ServerStatus.UNKNOWN -> Triple(Icons.Default.CloudSync, Color(0xFF9E9E9E), "Comprobando el servidor de alineación")
+    ServerStatus.DISABLED -> Triple(Icons.Default.PhoneAndroid, Color(0xFF9E9E9E), "Sin servidor: alineación en el dispositivo")
 }

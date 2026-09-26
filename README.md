@@ -31,20 +31,38 @@ paragraph by paragraph.
 - **Comfortable reading**: a dark theme designed for landscape reading. Images inside the books
   are shown too.
 
-## Alignment and translation service
+## Alignment and translation service (optional)
 
-Some features work better with
+TwinBooks works **out of the box with no server**: it aligns the paragraphs of both books and
+translates on the device, even offline (see below).
+
+Optionally, you can connect it to
 [**twinbooks-alignment-service**](https://gitlab.com/ecos.logic.org/twinbooks-alignment-service),
-a companion service that is **also open source**:
+a companion service that is **also open source** and improves:
 
 - **Paragraph and sentence alignment** between the two books.
 - **Translation** for single-book mode.
 
 You can **host the service wherever you want**, for example on your own machine or server.
-There is also a public instance at <https://twinbooks.duckdns.org/>, but it **requires an API key**.
+There is also an instance at <https://twinbooks.duckdns.org/>, but it **requires an API key**.
+If the server cannot be reached, the app falls back to on-device alignment and translation.
 
-If the service cannot be reached, the app still works: it falls back to on-device alignment and
-to on-device translation (see below).
+### Connecting to a server
+
+In the app, tap the ⚙️ button on the bookshelf, turn on **Usar un servidor**, enter the server
+address (a bare host such as `twinbooks.example.org` is enough) and your API key, and use
+**Probar conexión** to check both.
+
+For your own builds you can also bake a default server in, through an untracked
+`secrets.properties` file at the project root:
+
+```properties
+alignment.baseUrl=https://your-server.example.com/api/v1/
+alignment.apiKey=your-api-key
+```
+
+or the `TWINBOOKS_BASE_URL` and `TWINBOOKS_API_KEY` environment variables. Without them the
+build starts with no server. Whatever is saved in the app takes precedence.
 
 ## Offline translation
 
@@ -53,19 +71,6 @@ Without the service, TwinBooks translates on the device with
 [Firefox Translations](https://github.com/mozilla/translations) models by Mozilla. No Google
 services are involved. The English → Spanish model (about 25 MB) is downloaded from Mozilla
 the first time it is needed and then works without a connection.
-
-### Pointing the app to a server
-
-When building, set the server URL and API key in an untracked `secrets.properties` file at the
-project root:
-
-```properties
-alignment.baseUrl=https://your-server.example.com/api/v1/
-alignment.apiKey=your-api-key
-```
-
-Alternatively, set the `TWINBOOKS_BASE_URL` and `TWINBOOKS_API_KEY` environment variables.
-If you set neither, the app uses the public instance with no API key.
 
 ## Download
 

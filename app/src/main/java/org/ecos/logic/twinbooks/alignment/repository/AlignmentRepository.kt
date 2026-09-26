@@ -17,7 +17,6 @@ import java.io.IOException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.ecos.logic.twinbooks.BuildConfig
 import org.ecos.logic.twinbooks.alignment.api.AlignmentApiService
 import org.ecos.logic.twinbooks.alignment.model.*
 import retrofit2.Response
@@ -31,26 +30,73 @@ import javax.inject.Singleton
 @Singleton
 class AlignmentRepository @Inject constructor(
     private val context: Context,
+    private val settings: ServerSettingsStore,
 ) {
     
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
     
-    private val _status = MutableStateFlow(ServerStatus.UNKNOWN)
-    /** Last observed availability of the alignment server */
+    private val _status = MutableStateFlow(initialStatus(settings.config.value))
+    /** Last observed availability of the server ([ServerStatus.DISABLED] if none is set up) */
     val status: StateFlow<ServerStatus> = _status.asStateFlow()
 
-    private val apiService: AlignmentApiService = Retrofit.Builder()
-        .baseUrl(BuildConfig.ALIGNMENT_BASE_URL)
+    /** Server the app uses; changing it takes effect on the next request */
+    val config: StateFlow<ServerConfig> = settings.config
+
+    // Client for the config it was built with, rebuilt when the user picks another server
+    private var client: Pair<ServerConfig, AlignmentApiService>? = null
+
+    /** Saves the server chosen in the settings and resets the status for it. */
+    fun updateConfig(config: ServerConfig) {
+        settings.save(config)
+        _status.value = initialStatus(config)
+    }
+
+    /**
+     * Checks [config] without saving it: reachable (health) and key accepted (a one-word
+     * translation, since health is public). Returns ONLINE, OFFLINE or UNAUTHORIZED.
+     */
+    suspend fun testConnection(config: ServerConfig): ServerStatus {
+        if (!config.isEnabled) return ServerStatus.DISABLED
+        return try {
+            val api = createApi(config)
+            if (api.healthCheck().body() == null) return ServerStatus.OFFLINE
+            val response = api.translate(TranslateRequest(sentences = listOf("Hello.")))
+            when {
+                response.code() == 401 || response.code() == 403 -> ServerStatus.UNAUTHORIZED
+                // 502: the translation backend failed, but the server and the key are fine
+                response.isSuccessful || response.code() == 502 -> ServerStatus.ONLINE
+                else -> ServerStatus.OFFLINE
+            }
+        } catch (e: Exception) {
+            Log.w("AlignmentRepository", "Connection test failed: ${e.message}")
+            ServerStatus.OFFLINE
+        }
+    }
+
+    /** Client for the current server, or null (status DISABLED) when there is none. */
+    @Synchronized
+    private fun api(): AlignmentApiService? {
+        val config = settings.config.value
+        if (!config.isEnabled) {
+            _status.value = ServerStatus.DISABLED
+            return null
+        }
+        client?.let { (builtFor, api) -> if (builtFor == config) return api }
+        return createApi(config).also { client = config to it }
+    }
+
+    private fun createApi(config: ServerConfig): AlignmentApiService = Retrofit.Builder()
+        .baseUrl(config.baseUrl)
         .client(
             OkHttpClient.Builder()
                 // The server requires an API key on the alignment endpoints
                 .addInterceptor { chain ->
                     val request = chain.request()
                     chain.proceed(
-                        if (BuildConfig.ALIGNMENT_API_KEY.isBlank()) request
-                        else request.newBuilder().header(API_KEY_HEADER, BuildConfig.ALIGNMENT_API_KEY).build()
+                        if (config.apiKey.isBlank()) request
+                        else request.newBuilder().header(API_KEY_HEADER, config.apiKey).build()
                     )
                 }
                 // BASIC: chapter requests carry thousands of sentences, BODY would flood logcat
@@ -67,16 +113,17 @@ class AlignmentRepository @Inject constructor(
         .addConverterFactory(MoshiConverterFactory.create(moshi))
         .build()
         .create(AlignmentApiService::class.java)
-    
+
     // --- Public API ---
     
     /**
      * Check if alignment server is available.
      */
     suspend fun checkHealth(): HealthResponse? {
+        val api = api() ?: return null
         if (_status.value != ServerStatus.ONLINE) _status.value = ServerStatus.CHECKING
         return try {
-            val response = apiService.healthCheck()
+            val response = api.healthCheck()
             val body = if (response.isSuccessful) response.body() else null
             // Health is public: it can't tell a bad key, so don't overwrite UNAUTHORIZED
             if (body == null) _status.value = ServerStatus.OFFLINE
@@ -100,6 +147,7 @@ class AlignmentRepository @Inject constructor(
         similarityThreshold: Float = 0.3f,
         gapPenalty: Float = -0.15f,
     ): ChapterAlignResponse? {
+        val api = api() ?: return null
         val request = ChapterAlignRequest(
             leftSentences = leftSentences,
             rightSentences = rightSentences,
@@ -109,7 +157,7 @@ class AlignmentRepository @Inject constructor(
         )
         
         return try {
-            val response = apiService.alignChapter(request)
+            val response = api.alignChapter(request)
             _status.value = when {
                 response.isSuccessful -> ServerStatus.ONLINE
                 response.code() == 401 || response.code() == 403 -> ServerStatus.UNAUTHORIZED
@@ -136,13 +184,14 @@ class AlignmentRepository @Inject constructor(
         contextBefore: List<String> = emptyList(),
         contextAfter: List<String> = emptyList(),
     ): List<String>? {
+        val api = api() ?: return null
         val request = TranslateRequest(
             sentences = sentences,
             contextBefore = contextBefore.ifEmpty { null },
             contextAfter = contextAfter.ifEmpty { null },
         )
         return try {
-            val response = apiService.translate(request)
+            val response = api.translate(request)
             _status.value = when {
                 response.isSuccessful -> ServerStatus.ONLINE
                 response.code() == 401 || response.code() == 403 -> ServerStatus.UNAUTHORIZED
@@ -202,7 +251,8 @@ class AlignmentRepository @Inject constructor(
                 val rightLangBody = rightLang.toRequestBody(TEXT_MEDIA_TYPE)
                 val priorityBody = priority.toRequestBody(TEXT_MEDIA_TYPE)
                 
-                val response = apiService.submitBookAlignment(
+                val api = api() ?: return@withContext null
+                val response = api.submitBookAlignment(
                     leftPart, rightPart, leftLangBody, rightLangBody, priorityBody
                 )
                 
@@ -243,8 +293,9 @@ class AlignmentRepository @Inject constructor(
      * Get job status once.
      */
     suspend fun checkJobStatus(jobId: String): JobStatus? {
+        val api = api() ?: return null
         return try {
-            val response = apiService.getJobStatus(jobId)
+            val response = api.getJobStatus(jobId)
             if (response.isSuccessful) response.body() else null
         } catch (e: Exception) {
             Log.e("AlignmentRepository", "Job status check failed", e)
@@ -256,8 +307,9 @@ class AlignmentRepository @Inject constructor(
      * Get completed job result.
      */
     suspend fun getJobResult(jobId: String): AlignmentResult? {
+        val api = api() ?: return null
         return try {
-            val response = apiService.getJobResult(jobId)
+            val response = api.getJobResult(jobId)
             if (response.isSuccessful) response.body() else null
         } catch (e: Exception) {
             Log.e("AlignmentRepository", "Get job result failed", e)
@@ -307,19 +359,12 @@ class AlignmentRepository @Inject constructor(
         }
     }
     
-    // --- Configuration ---
-    
-    /**
-     * Update base URL (e.g., for production deployment).
-     */
-    fun setBaseUrl(baseUrl: String) {
-        // Would need to recreate Retrofit instance
-        Log.w("AlignmentRepository", "Base URL change requires app restart: $baseUrl")
-    }
-
     private companion object {
         const val API_KEY_HEADER = "X-API-Key"
         val EPUB_MEDIA_TYPE = "application/epub+zip".toMediaType()
         val TEXT_MEDIA_TYPE = "text/plain".toMediaType()
+
+        fun initialStatus(config: ServerConfig) =
+            if (config.isEnabled) ServerStatus.UNKNOWN else ServerStatus.DISABLED
     }
 }

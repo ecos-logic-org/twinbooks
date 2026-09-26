@@ -7,7 +7,7 @@ Android tablet app for bilingual reading: two EPUBs side-by-side (left=learning 
 ```bash
 ./gradlew assembleDebug          # Build (compilation check)
 ./gradlew lintDebug              # Lint
-./gradlew testDebug              # Tests (currently none)
+./gradlew testDebug              # JVM unit tests (app/src/test)
 ```
 
 CI runs: `lintDebug` → `assembleDebug` → `testDebug` (GitLab CI, `.gitlab-ci.yml`).
@@ -33,6 +33,12 @@ Always run `./gradlew assembleDebug` after changes to verify compilation.
   `app/src/main/cpp/slimt` git submodule, GPL-2.0+). Mozilla's EN→ES model is downloaded on
   first use to `filesDir/translation/`, verified with pinned SHA-256 hashes. No Google services.
   Clone with `--recurse-submodules`; NDK 27.1.12297006 + CMake 3.22.1 are needed.
+- **Server (optional)**: one TwinBooks server does both paragraph alignment and single-book
+  translation. `ServerSettingsStore` holds the user's choice (bookshelf ⚙️ →
+  `ServerSettingsDialog`); until they save one, the build-time `secrets.properties` values are
+  the default (empty = no server). `AlignmentRepository` rebuilds its client when the config
+  changes; with no server every call returns null and status is `ServerStatus.DISABLED`
+  (server indicators hidden, everything on-device).
 
 ### Key Files
 

@@ -209,8 +209,10 @@ enum class ServerStatus {
     ONLINE,
     /** Not reachable (down, no network, timeout, 5xx) */
     OFFLINE,
-    /** Reachable but rejects our X-API-Key (missing or wrong key in secrets.properties) */
-    UNAUTHORIZED
+    /** Reachable but rejects our X-API-Key (missing or wrong key in the server settings) */
+    UNAUTHORIZED,
+    /** No server set up: alignment and translation run on the device */
+    DISABLED
 }
 
 /**
