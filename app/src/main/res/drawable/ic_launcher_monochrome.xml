@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Open book: English paragraphs (left) linked to their translation (right) -->
+<!-- Single-colour variant for themed launcher icons -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -12,29 +12,23 @@
         android:translateY="17.32">
         <path
             android:pathData="M98,112H414A30,30 0,0 1,444,142V382A30,30 0,0 1,414,412H98A30,30 0,0 1,68,382V142A30,30 0,0 1,98,112Z"
-            android:fillColor="#14324A" />
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.45" />
         <path
             android:pathData="M106,132H236A16,16 0,0 1,252,148V376A16,16 0,0 1,236,392H106A16,16 0,0 1,90,376V148A16,16 0,0 1,106,132Z"
-            android:fillColor="#FFFFFF" />
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.25" />
         <path
             android:pathData="M276,132H406A16,16 0,0 1,422,148V376A16,16 0,0 1,406,392H276A16,16 0,0 1,260,376V148A16,16 0,0 1,276,132Z"
-            android:fillColor="#F4FBF5" />
+            android:fillColor="#FFFFFF"
+            android:fillAlpha="0.25" />
         <path
-            android:pathData="M114,160H228M114,182H228M114,204H176M114,240H228M114,262H228M114,284H200M114,320H228M114,342H228M114,364H160"
-            android:strokeColor="#2F6FB0"
-            android:strokeWidth="10"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M284,160H398M284,182H398M284,204H340M284,240H398M284,262H398M284,284H372M284,320H398M284,342H398M284,364H320"
-            android:strokeColor="#2E8B57"
+            android:pathData="M114,160H228M114,182H228M114,204H176M114,240H228M114,262H228M114,284H200M114,320H228M114,342H228M114,364H160M284,160H398M284,182H398M284,204H340M284,240H398M284,262H398M284,284H372M284,320H398M284,342H398M284,364H320"
+            android:strokeColor="#FFFFFF"
             android:strokeWidth="10"
             android:strokeLineCap="round" />
         <path
             android:pathData="M245,182A11,11 0,1 1,267,182A11,11 0,1 1,245,182ZM245,262A11,11 0,1 1,267,262A11,11 0,1 1,245,262ZM245,342A11,11 0,1 1,267,342A11,11 0,1 1,245,342Z"
-            android:fillColor="#F2B632" />
-        <path
-            android:pathData="M245,182A11,11 0,1 1,267,182A11,11 0,1 1,245,182ZM245,262A11,11 0,1 1,267,262A11,11 0,1 1,245,262ZM245,342A11,11 0,1 1,267,342A11,11 0,1 1,245,342Z"
-            android:strokeColor="#14324A"
-            android:strokeWidth="5" />
+            android:fillColor="#FFFFFF" />
     </group>
 </vector>
