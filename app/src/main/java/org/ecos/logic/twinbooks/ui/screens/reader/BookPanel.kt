@@ -53,6 +53,18 @@ val arrowFontFamily = FontFamily(
 )
 
 @SuppressLint("SetJavaScriptEnabled")
+/**
+ * Sentence range to highlight in a panel while the TTS speaks it: sentences
+ * [firstSentence]..[lastSentence] (paragraph-local) of paragraph [paragraphIndex].
+ * [trigger] changes on every request so the same range can be highlighted again.
+ */
+data class TtsSentenceHighlight(
+    val paragraphIndex: Int,
+    val firstSentence: Int,
+    val lastSentence: Int,
+    val trigger: Int
+)
+
 @Composable
 fun BookPanel(
     book: BookContent,
@@ -75,7 +87,7 @@ fun BookPanel(
     ttsRefreshTrigger: Int = 0,
     ttsScrollToNextParagraphTrigger: Int = 0,
     requestChapterSentencesTrigger: Int = 0,
-    highlightSentenceIndex: Int = -1, // For right book: highlight specific sentence during TTS
+    ttsSentenceHighlight: TtsSentenceHighlight? = null, // Right book: Spanish sentence(s) being spoken
     onChapterSentences: (chapterIndex: Int, sentencesJson: String) -> Unit = { _, _ -> },
     inlineTranslationTrigger: Int = 0,
     inlineTranslationSentenceIdx: Int = -1,
@@ -131,7 +143,8 @@ fun BookPanel(
                     highlightTranslatedTrigger = highlightTranslatedTrigger,
                     highlightTranslatedText = highlightTranslatedText,
                     highlightEnglishTrigger = highlightEnglishTrigger,
-                    highlightEnglishText = highlightEnglishText
+                    highlightEnglishText = highlightEnglishText,
+                    ttsSentenceHighlight = ttsSentenceHighlight
                 )
             }
         }
@@ -197,7 +210,8 @@ private fun ChapterWebView(
     highlightTranslatedTrigger: Int = 0,
     highlightTranslatedText: String = "",
     highlightEnglishTrigger: Int = 0,
-    highlightEnglishText: String = ""
+    highlightEnglishText: String = "",
+    ttsSentenceHighlight: TtsSentenceHighlight? = null
 ) {
     val readingZoneY = READING_ZONE_Y_DP.toInt()
     val currentOnParagraphHighlighted = remember { mutableStateOf(onParagraphHighlighted) }
@@ -225,6 +239,7 @@ private fun ChapterWebView(
     var lastAppliedHighlightTranslated by remember { mutableIntStateOf(0) }
     var lastAppliedRequestChapterSentences by remember { mutableIntStateOf(0) }
     var lastAppliedHighlightEnglish by remember { mutableIntStateOf(0) }
+    var lastAppliedTtsSentenceHighlight by remember { mutableIntStateOf(0) }
 
     val darkStyledHtml = """
         <!DOCTYPE html>
@@ -573,6 +588,34 @@ private fun ChapterWebView(
                     var range = document.createRange();
                     range.setStart(paragraph.firstChild, start);
                     range.setEnd(paragraph.firstChild, start + sentenceText.length);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    range.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            // Highlight sentences first..last of paragraph paraIdx (two-book TTS, right book).
+            // Indices are paragraph-local over the same compromise.js split sent to Kotlin
+            // by collectChapterSentences, so they match the Spanish sentence being spoken.
+            // The reading-zone paragraph is left alone: only the selection moves.
+            function highlightSentenceRange(paraIdx, first, last) {
+                var paragraph = document.querySelectorAll('p')[paraIdx];
+                if (!paragraph) return false;
+                var sentences = getParagraphSentences(paragraph);
+                if (first < 0 || last < first || last >= sentences.length) return false;
+
+                clearSentenceHighlight();
+                var a = getSentenceRange(paragraph, sentences, first);
+                var b = getSentenceRange(paragraph, sentences, last);
+                if (!a || !b) return false;
+                try {
+                    var range = document.createRange();
+                    range.setStart(a.startNode, a.startOffset);
+                    range.setEnd(b.endNode, b.endOffset);
                     var sel = window.getSelection();
                     sel.removeAllRanges();
                     sel.addRange(range);
@@ -1038,6 +1081,16 @@ private fun ChapterWebView(
                     .replace("\r", "")
                 webView.evaluateJavascript(
                     "highlightEnglishSentence('$escapedText')", null
+                )
+            }
+
+            // Highlight the Spanish sentence(s) being spoken by the TTS (right book).
+            if (ttsSentenceHighlight != null && ttsSentenceHighlight.trigger != lastAppliedTtsSentenceHighlight) {
+                lastAppliedTtsSentenceHighlight = ttsSentenceHighlight.trigger
+                webView.evaluateJavascript(
+                    "highlightSentenceRange(${ttsSentenceHighlight.paragraphIndex}, " +
+                        "${ttsSentenceHighlight.firstSentence}, ${ttsSentenceHighlight.lastSentence})",
+                    null
                 )
             }
 

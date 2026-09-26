@@ -101,7 +101,7 @@ fun ReaderScreen(
     var scrollToRightIndex by remember { mutableStateOf<Int?>(null) }
     var scrollToLeftIndex by remember { mutableStateOf<Int?>(null) }
     var isSyncScrollingRight by remember { mutableStateOf(false) }
-    var highlightRightSentenceIndex by remember { mutableIntStateOf(-1) }
+    var rightTtsHighlight by remember { mutableStateOf<TtsSentenceHighlight?>(null) }
     // Right-panel <- / -> jump in flight: true = select the last sentence on arrival, false = first
     var pendingRightSentenceLast by remember { mutableStateOf<Boolean?>(null) }
     var showResetDialog by remember { mutableStateOf(false) }
@@ -113,8 +113,13 @@ fun ReaderScreen(
 
     // Set up callback to highlight sentence in right book during TTS
     LaunchedEffect(Unit) {
-        viewModel.onHighlightRightSentence = { index ->
-            highlightRightSentenceIndex = index
+        viewModel.onHighlightRightSentence = { paragraph, first, last ->
+            rightTtsHighlight = TtsSentenceHighlight(
+                paragraphIndex = paragraph,
+                firstSentence = first,
+                lastSentence = last,
+                trigger = (rightTtsHighlight?.trigger ?: 0) + 1
+            )
         }
     }
 
@@ -676,7 +681,7 @@ fun ReaderScreen(
                             rightParagraphIndex = index
                         },
                         scrollToParagraphIndex = scrollToRightIndex,
-                        highlightSentenceIndex = highlightRightSentenceIndex,
+                        ttsSentenceHighlight = rightTtsHighlight,
                         onChapterSentences = { chapter, json ->
                             viewModel.onRightChapterSentences(chapter, json)
                         }

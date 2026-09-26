@@ -126,8 +126,9 @@ class ReaderViewModel @Inject constructor(
     private val dismissedPairingHints = mutableSetOf<Int>()
     // Sync state to restore when coming back from auto-translation to two books
     private var syncBeforeAutoTranslation = true
-    // Callback to highlight sentence in right book
-    var onHighlightRightSentence: ((Int) -> Unit)? = null
+    // Callback to highlight the Spanish sentence(s) being spoken in the right book
+    // (paragraph index, first and last paragraph-local sentence index)
+    var onHighlightRightSentence: ((paragraphIndex: Int, firstSentence: Int, lastSentence: Int) -> Unit)? = null
     private var currentSessionId: Long = -1
 
     /** Availability of the alignment server (shown in the reader, drives the fallbacks) */
@@ -997,10 +998,22 @@ class ReaderViewModel @Inject constructor(
      * @param rightParaIndex Override for right paragraph index (use during paragraph transitions)
      * @return Pair of (spanishSentence, sentenceIndexInParagraph), or null if not found
      */
+    /**
+     * Spanish text to speak for an English sentence, plus where it lives in the right book:
+     * paragraph [paragraphIndex], sentences [firstSentence]..[lastSentence] (paragraph-local,
+     * compromise.js indices, the same ones the right WebView uses to highlight).
+     */
+    private data class SpanishMatch(
+        val text: String,
+        val paragraphIndex: Int,
+        val firstSentence: Int,
+        val lastSentence: Int
+    )
+
     private suspend fun findMatchingSpanishSentence(
         englishSentence: String,
         rightParaIndex: Int? = null
-    ): Pair<String, Int>? {
+    ): SpanishMatch? {
         val currentState = _state.value
 
         // NOTE: single-book mode never reaches this function: onTtsSentenceComplete
@@ -1033,7 +1046,7 @@ class ReaderViewModel @Inject constructor(
         if (spanishSentences.isEmpty()) return null
         
         // If only one sentence, return it with index 0
-        if (spanishSentences.size == 1) return Pair(spanishSentences[0], 0)
+        if (spanishSentences.size == 1) return SpanishMatch(spanishSentences[0], paraIndex, 0, 0)
 
         // Alignment indices are CHAPTER-GLOBAL while TTS indices are PARAGRAPH-LOCAL.
         // Convert using per-paragraph offsets derived from the same compromise lists.
@@ -1063,10 +1076,13 @@ class ReaderViewModel @Inject constructor(
                     .map { it - rightSentencesBeforePara }
                     .filter { it in spanishSentences.indices }
                 if (localRight.isNotEmpty()) {
-                    // 1:2 alignments speak both Spanish sentences; highlight the first one
+                    // 1:2 alignments speak (and highlight) both Spanish sentences
                     val source = if (alignmentFromServer) "Server" else "Local"
                     Log.d("TtsBilingual", "$source alignment: leftGlobal=$leftGlobalIdx → local=$localRight")
-                    return Pair(localRight.joinToString(" ") { spanishSentences[it] }, localRight.first())
+                    return SpanishMatch(
+                        localRight.joinToString(" ") { spanishSentences[it] },
+                        paraIndex, localRight.min(), localRight.max()
+                    )
                 } else {
                     Log.w("TtsBilingual", "Alignment has no pair inside right paragraph $paraIndex for leftGlobal=$leftGlobalIdx")
                 }
@@ -1081,7 +1097,7 @@ class ReaderViewModel @Inject constructor(
             )
             Log.d("TtsBilingual", "Embedding fallback: index=$bestIndex, score=${(score * 100).roundToInt()}%")
             if (score >= EmbeddingManager.MIN_SEMANTIC_SCORE && bestIndex >= 0 && bestIndex < spanishSentences.size) {
-                return Pair(spanishSentences[bestIndex], bestIndex)
+                return SpanishMatch(spanishSentences[bestIndex], paraIndex, bestIndex, bestIndex)
             }
             Log.w("TtsBilingual", "Low semantic score ($score), falling back to translation")
         }
@@ -1094,9 +1110,9 @@ class ReaderViewModel @Inject constructor(
             range = spanishSentences.size
         )
         return if (bestIndex >= 0 && bestIndex < spanishSentences.size) {
-            Pair(spanishSentences[bestIndex], bestIndex)
+            SpanishMatch(spanishSentences[bestIndex], paraIndex, bestIndex, bestIndex)
         } else {
-            Pair(spanishSentences[0], 0) // fallback to first sentence
+            SpanishMatch(spanishSentences[0], paraIndex, 0, 0) // fallback to first sentence
         }
     }
 
@@ -1540,13 +1556,14 @@ class ReaderViewModel @Inject constructor(
                         val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
                             ttsExpectedRightParagraphIndex
                         } else null
-                        val result = findMatchingSpanishSentence(text, rightParaIndex)
-                        val (spanishSentence, sentenceIndex) = result ?: run {
+                        val match = findMatchingSpanishSentence(text, rightParaIndex)
+                        val spanishSentence = match?.text ?: run {
                             Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
-                            Pair(translationManager.translate(text), 0)
+                            translationManager.translate(text)
                         }
-                        Log.d("TtsBilingual", "ES→EN: Speaking Spanish from right book: '$spanishSentence' (index: $sentenceIndex, rightPara: $rightParaIndex)")
-                        onHighlightRightSentence?.invoke(sentenceIndex)
+                        Log.d("TtsBilingual", "ES→EN: Speaking Spanish from right book: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                        // Translated fallback: the sentence isn't in the right book, nothing to highlight
+                        match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
                         ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
                     } catch (e: Exception) {
                         Log.e("TtsBilingual", "Failed to get Spanish sentence", e)
@@ -1594,13 +1611,14 @@ class ReaderViewModel @Inject constructor(
                                 val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
                                     ttsExpectedRightParagraphIndex
                                 } else null
-                                val result = findMatchingSpanishSentence(englishSentence, rightParaIndex)
-                                val (spanishSentence, sentenceIndex) = result ?: run {
+                                val match = findMatchingSpanishSentence(englishSentence, rightParaIndex)
+                                val spanishSentence = match?.text ?: run {
                                     Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
-                                    Pair(translationManager.translate(englishSentence), 0)
+                                    translationManager.translate(englishSentence)
                                 }
-                                Log.d("TtsBilingual", "EN→ES: Spanish sentence: '$spanishSentence' (index: $sentenceIndex, rightPara: $rightParaIndex)")
-                                onHighlightRightSentence?.invoke(sentenceIndex)
+                                Log.d("TtsBilingual", "EN→ES: Spanish sentence: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                                // Translated fallback: the sentence isn't in the right book, nothing to highlight
+                                match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
                                 ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
                             } catch (e: Exception) {
                                 Log.e("TtsBilingual", "EN→ES: Failed to get Spanish sentence", e)
@@ -1637,13 +1655,14 @@ class ReaderViewModel @Inject constructor(
                                 val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
                                     ttsExpectedRightParagraphIndex
                                 } else null
-                                val result = findMatchingSpanishSentence(englishSentence, rightParaIndex)
-                                val (spanishSentence, sentenceIndex) = result ?: run {
+                                val match = findMatchingSpanishSentence(englishSentence, rightParaIndex)
+                                val spanishSentence = match?.text ?: run {
                                     Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
-                                    Pair(translationManager.translate(englishSentence), 0)
+                                    translationManager.translate(englishSentence)
                                 }
-                                Log.d("TtsBilingual", "ES→EN: Spanish sentence: '$spanishSentence' (index: $sentenceIndex, rightPara: $rightParaIndex)")
-                                onHighlightRightSentence?.invoke(sentenceIndex)
+                                Log.d("TtsBilingual", "ES→EN: Spanish sentence: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                                // Translated fallback: the sentence isn't in the right book, nothing to highlight
+                                match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
                                 ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
                                 bilingualPhase = 1 // Next will be English
                             } catch (e: Exception) {
@@ -1667,13 +1686,14 @@ class ReaderViewModel @Inject constructor(
                                 val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
                                     ttsExpectedRightParagraphIndex
                                 } else null
-                                val result = findMatchingSpanishSentence(englishSentence, rightParaIndex)
-                                val (spanishSentence, sentenceIndex) = result ?: run {
+                                val match = findMatchingSpanishSentence(englishSentence, rightParaIndex)
+                                val spanishSentence = match?.text ?: run {
                                     Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
-                                    Pair(translationManager.translate(englishSentence), 0)
+                                    translationManager.translate(englishSentence)
                                 }
-                                Log.d("TtsBilingual", "EN↔ES: Spanish sentence: '$spanishSentence' (index: $sentenceIndex, rightPara: $rightParaIndex)")
-                                onHighlightRightSentence?.invoke(sentenceIndex)
+                                Log.d("TtsBilingual", "EN↔ES: Spanish sentence: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                                // Translated fallback: the sentence isn't in the right book, nothing to highlight
+                                match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
                                 ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
                             } catch (e: Exception) {
                                 Log.e("TtsBilingual", "EN↔ES: Failed to get Spanish sentence", e)
