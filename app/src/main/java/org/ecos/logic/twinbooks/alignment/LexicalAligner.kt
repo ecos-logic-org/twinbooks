@@ -10,7 +10,7 @@ import kotlin.math.min
 /**
  * Offline sentence aligner for one chapter pair.
  *
- * Input: the LEFT sentences already machine-translated into the right language (ML Kit
+ * Input: the LEFT sentences already machine-translated into the right language (on-device
  * EN→ES) and the RIGHT sentences. Both sides are then Spanish, so a lexical similarity
  * works: IDF-weighted Dice over lightly stemmed content words, damped by length ratio.
  *

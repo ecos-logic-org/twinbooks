@@ -11,6 +11,14 @@ image: eclipse-temurin:17-jdk-jammy
 
 variables:
 
+  # The on-device translator (slimt) and its dependencies are git submodules
+  GIT_SUBMODULE_STRATEGY: recursive
+
+  # Native build for the on-device translator; must match ndkVersion and
+  # externalNativeBuild.cmake.version in app/build.gradle.kts
+  ANDROID_NDK_VERSION: "27.1.12297006"
+  ANDROID_CMAKE_VERSION: "3.22.1"
+
   # ANDROID_COMPILE_SDK is the version of Android you're compiling with.
   # It should match compileSdkVersion.
   ANDROID_COMPILE_SDK: "33"
@@ -52,6 +60,8 @@ before_script:
   - sdkmanager "platforms;android-${ANDROID_COMPILE_SDK}"
   - sdkmanager "platform-tools"
   - sdkmanager "build-tools;${ANDROID_BUILD_TOOLS}"
+  - sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+  - sdkmanager "cmake;${ANDROID_CMAKE_VERSION}"
 
   # Not necessary, but just for surity
   - chmod +x ./gradlew

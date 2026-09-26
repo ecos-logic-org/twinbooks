@@ -3,7 +3,7 @@ package org.ecos.logic.twinbooks.data.local
 import androidx.room.Entity
 
 /**
- * Persisted sentence alignment for one chapter pair (local ML Kit + lexical DP).
+ * Persisted sentence alignment for one chapter pair (on-device translation + lexical DP).
  * [pairs] is compact text "left:right;left:right;..." with chapter-global sentence indices
  * (compromise.js split). [leftCount]/[rightCount] detect a different split → recompute.
  */

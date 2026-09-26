@@ -127,7 +127,7 @@ class AlignmentRepository @Inject constructor(
     /**
      * Translate one paragraph on the server, sentence by sentence.
      * Returns exactly one translation per sentence, or null when the server is
-     * unavailable (callers fall back to on-device ML Kit).
+     * unavailable (callers fall back to on-device translation).
      * [contextBefore]/[contextAfter] are neighbouring paragraphs the server only reads
      * to pick the right grammatical gender (e.g. "cansada" vs "cansado").
      */

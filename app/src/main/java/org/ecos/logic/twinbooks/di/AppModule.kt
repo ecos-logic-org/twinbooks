@@ -8,7 +8,7 @@ import org.ecos.logic.twinbooks.data.local.ReadingSessionDao
 import org.ecos.logic.twinbooks.data.local.TwinBooksDatabase
 import org.ecos.logic.twinbooks.data.repository.BookRepositoryImpl
 import org.ecos.logic.twinbooks.domain.model.BookRepository
-import org.ecos.logic.twinbooks.translation.MlKitTranslator
+import org.ecos.logic.twinbooks.translation.SlimtTranslator
 import org.ecos.logic.twinbooks.translation.TranslationManager
 import dagger.Binds
 import dagger.Module
@@ -58,8 +58,8 @@ object ManagerModule {
 
     @Provides
     @Singleton
-    fun provideTranslationManager(): TranslationManager {
-        return TranslationManager(MlKitTranslator())
+    fun provideTranslationManager(@ApplicationContext context: Context): TranslationManager {
+        return TranslationManager(SlimtTranslator(context))
     }
 
     @Provides

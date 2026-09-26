@@ -44,7 +44,15 @@ You can **host the service wherever you want**, for example on your own machine 
 There is also a public instance at <https://twinbooks.duckdns.org/>, but it **requires an API key**.
 
 If the service cannot be reached, the app still works: it falls back to on-device alignment and
-to on-device translation with ML Kit.
+to on-device translation (see below).
+
+## Offline translation
+
+Without the service, TwinBooks translates on the device with
+[slimt](https://github.com/DavidVentura/slimt), a small inference engine for the open
+[Firefox Translations](https://github.com/mozilla/translations) models by Mozilla. No Google
+services are involved. The English → Spanish model (about 25 MB) is downloaded from Mozilla
+the first time it is needed and then works without a connection.
 
 ### Pointing the app to a server
 
@@ -71,7 +79,14 @@ Requirements: Android 11 (API 30) or newer.
 
 ## Building from source
 
+The on-device translator is native code (C++, built with the Android NDK and CMake through
+Gradle). Clone with submodules:
+
 ```bash
+git clone --recurse-submodules https://gitlab.com/ecos.logic.org/twinbooks.git
+# or, in an existing clone:
+git submodule update --init --recursive
+
 ./gradlew assembleDebug
 ```
 
@@ -79,7 +94,12 @@ The APK is written to `app/build/outputs/apk/debug/`.
 
 ## License
 
-TwinBooks is open source software released under the [Apache License 2.0](LICENSE).
+TwinBooks' own source code is open source software released under the
+[Apache License 2.0](LICENSE).
+
+The app links [slimt](https://github.com/DavidVentura/slimt), which is licensed under the
+GPL-2.0-or-later, so the **APK as a whole is distributed under the GPL-3.0**. The translation
+models are Mozilla's and are downloaded at runtime under their own license.
 Contributions, bug reports and suggestions are welcome through
 [GitLab issues](https://gitlab.com/ecos.logic.org/twinbooks/-/issues) and merge requests.
 

@@ -35,6 +35,26 @@ android {
 
         buildConfigField("String", "ALIGNMENT_BASE_URL", "\"$alignmentBaseUrl\"")
         buildConfigField("String", "ALIGNMENT_API_KEY", "\"$alignmentApiKey\"")
+
+        // On-device translation engine (slimt, src/main/cpp)
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        externalNativeBuild {
+            cmake {
+                // Only the JNI library, not slimt's/sentencepiece's command-line tools
+                targets += "twinbooks_translate"
+            }
+        }
+    }
+
+    ndkVersion = "27.1.12297006"
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildTypes {
@@ -111,13 +131,6 @@ dependencies {
     implementation(libs.epub4j.core) {
         exclude(group = "xmlpull")
     }
-
-    // ML Kit Translation (on-device, offline)
-    implementation(libs.translate)
-    
-    // Play Services Tasks (for await() extension)
-    implementation(libs.play.services.tasks)
-    implementation(libs.kotlinx.coroutines.play.services)
 
     // Network (Retrofit + OkHttp + Moshi)
     implementation(libs.retrofit)

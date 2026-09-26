@@ -216,7 +216,7 @@ fun ReaderScreen(
         message?.let { snackbarHostState.showSnackbar(it) }
     }
 
-    // Same for the translation server in single-book mode (fallback: ML Kit on the device)
+    // Same for the translation server in single-book mode (fallback: on-device translation)
     val translationLook = translationStatusLook(serverStatus, state.isServerTranslationFailing)
     var lastNotifiedTranslationLabel by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(translationLook.third, state.isSingleBookMode) {

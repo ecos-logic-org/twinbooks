@@ -110,7 +110,7 @@ class ReaderViewModel @Inject constructor(
     // Server negative cache: don't retry a chapter pair for a while after a failure
     private var serverFailedKey: String? = null
     private var serverFailedAt = 0L
-    // Local (offline) chapter alignment: ML Kit translation + LexicalAligner
+    // Local (offline) chapter alignment: on-device translation + LexicalAligner
     private var localAlignmentJob: Job? = null
     private var localAlignmentJobKey: String? = null
     // Chapter map: left spine index -> right spine index (-1 = unmatched), see ChapterMatcher
@@ -358,7 +358,7 @@ class ReaderViewModel @Inject constructor(
 
     /**
      * Load a SINGLE book in full-screen mode. There is no second book: the Spanish
-     * side comes from the on-device ML Kit translator (see findMatchingSpanishSentence).
+     * side comes from the on-device translator (see findMatchingSpanishSentence).
      */
     fun loadSingleBook(uri: Uri) {
         viewModelScope.launch {
@@ -709,7 +709,7 @@ class ReaderViewModel @Inject constructor(
      * Keeps [serverStatus] fresh while a pair or a single book is open (the server goes down
      * now and then): every minute while it's down, every 5 minutes while it's up. When it
      * comes back, the failure cache is dropped and the current chapter is asked to the server
-     * again (single-book mode: the ML Kit back-off is dropped instead).
+     * again (single-book mode: the on-device back-off is dropped instead).
      */
     private fun startServerMonitor() {
         serverMonitorJob?.cancel()
@@ -1067,7 +1067,7 @@ class ReaderViewModel @Inject constructor(
             }
 
             // STRATEGY 2: chapter alignment (server result if it answered, otherwise the
-            // offline ML Kit + LexicalAligner one). Same global index space in both cases.
+            // offline on-device translation + LexicalAligner one). Same global index space in both cases.
             if (currentAlignmentKey == alignmentCacheKey(leftChapter, rightChapter)) {
                 val localRight = alignmentByLeft[leftGlobalIdx].orEmpty()
                     .map { it - rightSentencesBeforePara }
@@ -1175,7 +1175,7 @@ class ReaderViewModel @Inject constructor(
 
     /**
      * Offline alignment of the current chapter pair, once both WebViews pushed their
-     * compromise.js sentences: left sentences are translated with ML Kit, then aligned
+     * compromise.js sentences: left sentences are translated on-device, then aligned
      * with LexicalAligner. The result is stored in Room, so each chapter pair is computed
      * once. A server alignment, when available, takes precedence.
      */
@@ -1209,7 +1209,7 @@ class ReaderViewModel @Inject constructor(
                     Log.d("LocalAlignment", "Loaded stored alignment for ch $leftChapterIdx↔$rightChapterIdx")
                     decodePairs(stored.pairs)
                 } else {
-                    // Server first (better model); if it's down, the offline ML Kit + lexical DP.
+                    // Server first (better model); if it's down, the offline on-device translation + lexical DP.
                     // Either result is stored, so the chapter stays aligned when the server isn't.
                     val serverPairs = if (serverStatus.value != ServerStatus.OFFLINE &&
                         serverStatus.value != ServerStatus.UNAUTHORIZED
@@ -1259,9 +1259,9 @@ class ReaderViewModel @Inject constructor(
                 _state.update { it.copy(chapterAlignmentProgress = i.toFloat() / leftSentences.size) }
             }
         }
-        // translate() returns the input unchanged when ML Kit is unavailable
+        // translate() returns the input unchanged when on-device translation is unavailable
         if (untranslated > leftSentences.size / 2) {
-            Log.w("LocalAlignment", "ML Kit unavailable ($untranslated/${leftSentences.size} untranslated), not aligning")
+            Log.w("LocalAlignment", "On-device translation unavailable ($untranslated/${leftSentences.size} untranslated), not aligning")
             return null
         }
         return withContext(Dispatchers.Default) {
@@ -1787,14 +1787,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     // --- Single-book mode: sentence-level TTS within paragraph ---------------------
-    // The paragraph is the translation unit (ML Kit gets full paragraph for context).
+    // The paragraph is the translation unit (the translator gets the full paragraph for context).
     // TTS reads sentence by sentence: EN1 → ES1 → EN2 → ES2... (mode dependent),
     // using compromise.js sentence splitting from the WebView for accurate boundaries.
     // Translation is inserted inline below each paragraph as a sibling div.
 
     /**
      * Get English sentences for a paragraph using our own sentence splitter (extractSentences)
-     * on the paragraph text. The same splitter runs on the ML Kit translation, so boundaries
+     * on the paragraph text. The same splitter runs on the on-device translation, so boundaries
      * are comparable (compromise.js over-splits).
      * Caller must ensure paragraph is highlighted.
      */
@@ -1856,7 +1856,7 @@ class ReaderViewModel @Inject constructor(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Deferred<List<String>?>>?) =
             size > SERVER_TRANSLATION_CACHE_SIZE
     }
-    // After a failed request, use ML Kit for a while instead of retrying every paragraph
+    // After a failed request, use on-device translation for a while instead of retrying every paragraph
     private var serverTranslationRetryAt = 0L
 
     private fun serverTranslationKey(paraIdx: Int): String {
@@ -1891,7 +1891,7 @@ class ReaderViewModel @Inject constructor(
         return deferred
     }
 
-    /** Status button in single-book mode: check the server again and drop the ML Kit back-off. */
+    /** Status button in single-book mode: check the server again and drop the on-device back-off. */
     fun retryServerTranslation() {
         viewModelScope.launch {
             _state.update { it.copy(isServerAligning = true) }
@@ -1929,7 +1929,7 @@ class ReaderViewModel @Inject constructor(
             return
         }
 
-        // Translate the full paragraph (better ML Kit context)
+        // Translate the full paragraph (better translation context)
         val paraText = enSentences.joinToString(" ")
         lastSpokenEnglishText = paraText
         Log.d("SingleBook", "Reading paragraph $paraIdx (${enSentences.size} sentences, mode=${_state.value.ttsBilingualMode})")
@@ -1941,7 +1941,7 @@ class ReaderViewModel @Inject constructor(
         val needsEsDisplay = _state.value.autoTranslationEnabled
 
         // Server translation first: better quality and exactly one ES sentence
-        // per EN sentence. ML Kit below is the fallback when the server is unavailable.
+        // per EN sentence. On-device translation below is the fallback when the server is unavailable.
         var serverSentences: List<String>? = null
         if (needsEsSpeech || needsEsDisplay) {
             serverSentences = serverTranslationAsync(paraIdx, enSentences)?.await()
@@ -1953,7 +1953,7 @@ class ReaderViewModel @Inject constructor(
         if ((needsEsSpeech || needsEsDisplay) && serverSentences == null) {
             esParagraph = translationManager.translate(paraText)
             if (esParagraph == paraText) {
-                Log.w("SingleBook", "ML Kit translation unavailable for paragraph $paraIdx")
+                Log.w("SingleBook", "On-device translation unavailable for paragraph $paraIdx")
                 esParagraph = null
             } else {
                 // Normalize newlines for consistent matching
@@ -1964,7 +1964,7 @@ class ReaderViewModel @Inject constructor(
         // Split Spanish translation into sentences
         var esSentences = serverSentences ?: esParagraph?.let { extractSentences(it) } ?: emptyList()
 
-        // Sentence pairing is by position, so counts must match. When ML Kit merged or
+        // Sentence pairing is by position, so counts must match. When the translator merged or
         // split sentences, translate this paragraph sentence by sentence for SPEECH only
         // (less context, but EN[i] <-> ES[i] is guaranteed). The displayed translation
         // stays the full-paragraph one.

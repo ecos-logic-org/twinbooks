@@ -50,15 +50,15 @@ data class ReadingState(
     val ttsSpeed: Float = 1.0f,
     // Server alignment progress indicator
     val isServerAligning: Boolean = false,
-    // Single-book mode: the last server translation failed (ML Kit is being used meanwhile)
+    // Single-book mode: the last server translation failed (on-device translation is used meanwhile)
     val isServerTranslationFailing: Boolean = false,
-    // Local chapter alignment (ML Kit + lexical DP) progress: -1 = idle, 0..1 = translating
+    // Local chapter alignment (on-device translation + lexical DP) progress: -1 = idle, 0..1 = translating
     val chapterAlignmentProgress: Float = -1f,
     // Bumped when a chapter alignment becomes available: re-sync the right panel
     val resyncRightTrigger: Int = 0,
     // Suggestion shown when the current chapter can't be paired (or can again)
     val chapterPairingHint: ChapterPairingHint? = null,
-    // Single-book mode: one book full screen, Spanish comes from on-device ML Kit translation
+    // Single-book mode: one book full screen, Spanish comes from on-device translation
     val isSingleBookMode: Boolean = false,
     val autoTranslationEnabled: Boolean = true,
     // Inline translation push into the WebView (bump trigger to insert a translation)

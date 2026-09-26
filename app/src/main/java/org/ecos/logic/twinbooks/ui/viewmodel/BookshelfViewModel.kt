@@ -119,7 +119,7 @@ class BookshelfViewModel @Inject constructor(
 
     /**
      * Create a session with a SINGLE book: full-screen view, the Spanish side is an
-     * on-device ML Kit translation instead of a second book.
+     * on-device translation instead of a second book.
      */
     fun createSingleBook(uri: String) {
         viewModelScope.launch {

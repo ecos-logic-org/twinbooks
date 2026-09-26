@@ -678,7 +678,7 @@ private fun NewPairDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Un solo EPUB a pantalla completa. Traducción al castellano por párrafos con ML Kit on-device. TTS bilingüe frase a frase (EN ↔ ES).",
+                                text = "Un solo EPUB a pantalla completa. Traducción al castellano por párrafos, también sin conexión. TTS bilingüe frase a frase (EN ↔ ES).",
                                 color = Color(0xFFB2DFDB),
                                 fontSize = 13.sp
                             )

@@ -57,7 +57,7 @@ abstract class TwinBooksDatabase : RoomDatabase() {
             }
         }
 
-        // v7->8: modo libro único (un solo libro con traducción automática ML Kit)
+        // v7->8: modo libro único (un solo libro con traducción automática en el dispositivo)
         val MIGRATION_7_8 = object : Migration(7, 8) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE reading_sessions ADD COLUMN isSingleBookMode INTEGER NOT NULL DEFAULT 0")
