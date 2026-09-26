@@ -1,12 +1,5 @@
 package org.ecos.logic.twinbooks.ui.screens.reader
 
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Cloud
-import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -35,17 +28,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.ViewColumn
-import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.ViewColumn
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,28 +59,35 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
-import kotlin.text.Regex
-import kotlin.text.RegexOption
-import kotlinx.coroutines.CoroutineScope
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.domain.model.ChapterPairingHint
-import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
 import org.ecos.logic.twinbooks.domain.model.TtsBilingualMode
+import org.ecos.logic.twinbooks.ui.viewmodel.ReaderViewModel
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ReaderScreen(
     sessionId: Long,
     onBackToBookshelf: () -> Unit,
-    viewModel: ReaderViewModel = hiltViewModel()
+    viewModel: ReaderViewModel = hiltViewModel(
+        checkNotNull(
+            LocalViewModelStoreOwner.current
+        ) {
+                "No ViewModelStoreOwner was provided via LocalViewModelStoreOwner"
+            }, null
+    )
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -134,7 +138,7 @@ fun ReaderScreen(
             // Wait for the programmatic scroll to complete before allowing anchor updates
             // The WebView scroll + JS callback takes some time
             coroutineScope.launch {
-                delay(500)
+                delay(500.milliseconds)
                 if (rightParagraphIndex == targetIndex) {
                     isSyncScrollingRight = false
                 }
@@ -603,7 +607,7 @@ fun ReaderScreen(
                                 // after the WebView's own "select sentence 0" (~50 ms)
                                 pendingRightSentenceLast = null
                                 coroutineScope.launch {
-                                    delay(250)
+                                    delay(250.milliseconds)
                                     rightSentenceIndex = if (selectLast) (count - 1).coerceAtLeast(0) else 0
                                 }
                             } else if (count > 0 && rightSentenceIndex == -1) {
@@ -1033,7 +1037,7 @@ private fun BottomBar(
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            text = if (minutes > 0) "${minutes} min" else "Sin límite",
+                                            text = if (minutes > 0) "$minutes min" else "Sin límite",
                                             color = if (minutes == ttsTimeLimitMinutes) Color(0xFF4FC3F7) else Color(0xFFB0B0B0)
                                         )
                                     },
@@ -1111,7 +1115,6 @@ private fun BottomBar(
                                                         TtsBilingualMode.EN_TO_ES -> " \u2192 "
                                                         TtsBilingualMode.ES_TO_EN -> " \u2192 "
                                                         TtsBilingualMode.EN_ES_EN -> " \u21C4 "
-                                                        else -> ""
                                                     },
                                                     color = Color(0xFFCE93D8),
                                                     fontSize = 12.sp,
