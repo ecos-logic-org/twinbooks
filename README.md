@@ -51,7 +51,8 @@ If the server cannot be reached, the app falls back to on-device alignment and t
 
 In the app, tap the ⚙️ button on the bookshelf, turn on **Usar un servidor**, enter the server
 address (a bare host such as `twinbooks.example.org` is enough) and your API key, and use
-**Probar conexión** to check both.
+**Probar conexión** to check both. The server must be reachable over **HTTPS**: book text and
+the API key travel in every request, so plain HTTP is refused.
 
 For your own builds you can also bake a default server in, through an untracked
 `secrets.properties` file at the project root:
@@ -103,8 +104,11 @@ TwinBooks' own source code is open source software released under the
 [Apache License 2.0](LICENSE).
 
 The app links [slimt](https://github.com/DavidVentura/slimt), which is licensed under the
-GPL-2.0-or-later, so the **APK as a whole is distributed under the GPL-3.0**. The translation
-models are Mozilla's and are downloaded at runtime under their own license.
+GPL-2.0-or-later, so the **APK as a whole is distributed under the GPL-3.0**; its complete
+source is this repository at the release tag, submodules included. The translation model is
+Mozilla's (MPL-2.0) and is downloaded at runtime. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for every third-party component and its
+license.
 Contributions, bug reports and suggestions are welcome through
 [GitLab issues](https://gitlab.com/ecos.logic.org/twinbooks/-/issues) and merge requests.
 
