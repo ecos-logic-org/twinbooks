@@ -101,7 +101,9 @@ fun ServerSettingsDialog(
                         },
                         label = { Text("Dirección del servidor") },
                         placeholder = { Text("https://twinbooks.example.org") },
-                        supportingText = if (url.isNotBlank() && normalizedUrl == null) {
+                        supportingText = if (ServerSettingsStore.isInsecureUrl(url)) {
+                            { Text("El servidor debe usar HTTPS") }
+                        } else if (url.isNotBlank() && normalizedUrl == null) {
                             { Text("Dirección no válida") }
                         } else {
                             { Text("También puedes pegar aquí un enlace twinbooks://connect") }

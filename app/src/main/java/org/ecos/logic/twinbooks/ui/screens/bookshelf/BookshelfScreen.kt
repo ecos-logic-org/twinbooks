@@ -334,7 +334,7 @@ fun BookshelfScreen(
         AlertDialog(
             onDismissRequest = { showInvalidLink = false },
             title = { Text("Enlace no válido") },
-            text = { Text("Este enlace de conexión no contiene una dirección de servidor válida.") },
+            text = { Text("Este enlace de conexión no contiene una dirección de servidor válida (tiene que usar HTTPS).") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = { showInvalidLink = false }) {
                     Text("Aceptar")

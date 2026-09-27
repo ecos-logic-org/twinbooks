@@ -1,7 +1,9 @@
 package org.ecos.logic.twinbooks.alignment.repository
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ServerSettingsStoreTest {
@@ -15,8 +17,16 @@ class ServerSettingsStoreTest {
     }
 
     @Test
-    fun `scheme and port are kept`() {
-        assertEquals("http://192.168.1.20:8000/api/v1/", normalize("http://192.168.1.20:8000"))
+    fun `port is kept`() {
+        assertEquals("https://192.168.1.20:8443/api/v1/", normalize("https://192.168.1.20:8443"))
+    }
+
+    @Test
+    fun `plain http is rejected`() {
+        assertNull(normalize("http://192.168.1.20:8000"))
+        assertNull(normalize("HTTP://twinbooks.example.org"))
+        assertTrue(ServerSettingsStore.isInsecureUrl(" http://192.168.1.20:8000"))
+        assertFalse(ServerSettingsStore.isInsecureUrl("twinbooks.example.org"))
     }
 
     @Test
@@ -44,8 +54,8 @@ class ServerSettingsStoreTest {
     @Test
     fun `connect link with plain address, extra params and no key`() {
         assertEquals(
-            ServerConfig("http://192.168.1.20:8000/api/v1/", ""),
-            ServerSettingsStore.parseConnectLink("twinbooks://connect/?url=http://192.168.1.20:8000&v=1")
+            ServerConfig("https://192.168.1.20:8443/api/v1/", ""),
+            ServerSettingsStore.parseConnectLink("twinbooks://connect/?url=https://192.168.1.20:8443&v=1")
         )
         assertEquals(
             ServerConfig("https://twinbooks.example.org/api/v1/", "k"),
@@ -59,5 +69,6 @@ class ServerSettingsStoreTest {
         assertNull(ServerSettingsStore.parseConnectLink("twinbooks://connect"))
         assertNull(ServerSettingsStore.parseConnectLink("twinbooks://connect?key=abc"))
         assertNull(ServerSettingsStore.parseConnectLink("twinbooks://other?url=example.org"))
+        assertNull(ServerSettingsStore.parseConnectLink("twinbooks://connect?url=http%3A%2F%2Fexample.org"))
     }
 }

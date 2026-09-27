@@ -72,6 +72,9 @@ class ServerSettingsStore(context: Context) {
         private const val KEY_ENABLED = "enabled"
         private const val API_PATH = "api/v1/"
 
+        /** An http:// address: valid syntax, but refused (explains the rejection in the UI) */
+        fun isInsecureUrl(input: String): Boolean = input.trim().startsWith("http://", ignoreCase = true)
+
         /** twinbooks://connect?url=<server address>&key=<API key> sets up a server */
         const val CONNECT_LINK_SCHEME = "twinbooks"
         const val CONNECT_LINK_HOST = "connect"
@@ -97,13 +100,16 @@ class ServerSettingsStore(context: Context) {
 
         /**
          * Turns what the user typed into the API base URL, or null if it isn't a valid
-         * http(s) URL. A bare host ("twinbooks.example.org") gets https and the API path.
+         * https URL. A bare host ("twinbooks.example.org") gets https and the API path.
+         * Plain http is rejected: the app only allows encrypted traffic (book text and the
+         * API key travel in every request), see [isInsecureUrl].
          */
         fun normalizeBaseUrl(input: String): String? {
             val trimmed = input.trim()
             if (trimmed.isEmpty()) return null
             val withScheme = if ("://" in trimmed) trimmed else "https://$trimmed"
             val url = withScheme.toHttpUrlOrNull() ?: return null
+            if (!url.isHttps) return null
             val path = url.encodedPath.trimEnd('/')
             val newPath = if (path.isEmpty()) "/$API_PATH" else "$path/"
             return url.newBuilder().encodedPath(newPath).build().toString()
