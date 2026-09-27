@@ -32,4 +32,32 @@ class ServerSettingsStoreTest {
         assertNull(normalize("ftp://example.org"))
         assertNull(normalize("https://"))
     }
+
+    @Test
+    fun `connect link with encoded address and key`() {
+        val config = ServerSettingsStore.parseConnectLink(
+            "twinbooks://connect?url=https%3A%2F%2Ftwinbooks.example.org&key=abc123"
+        )
+        assertEquals(ServerConfig("https://twinbooks.example.org/api/v1/", "abc123"), config)
+    }
+
+    @Test
+    fun `connect link with plain address, extra params and no key`() {
+        assertEquals(
+            ServerConfig("http://192.168.1.20:8000/api/v1/", ""),
+            ServerSettingsStore.parseConnectLink("twinbooks://connect/?url=http://192.168.1.20:8000&v=1")
+        )
+        assertEquals(
+            ServerConfig("https://twinbooks.example.org/api/v1/", "k"),
+            ServerSettingsStore.parseConnectLink(" TwinBooks://Connect?key=k&url=twinbooks.example.org ")
+        )
+    }
+
+    @Test
+    fun `not a connect link or no valid address`() {
+        assertNull(ServerSettingsStore.parseConnectLink("https://twinbooks.example.org"))
+        assertNull(ServerSettingsStore.parseConnectLink("twinbooks://connect"))
+        assertNull(ServerSettingsStore.parseConnectLink("twinbooks://connect?key=abc"))
+        assertNull(ServerSettingsStore.parseConnectLink("twinbooks://other?url=example.org"))
+    }
 }

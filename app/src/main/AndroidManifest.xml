@@ -46,6 +46,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/epub+zip" />
             </intent-filter>
+
+            <!-- twinbooks://connect?url=...&key=... sets up a TwinBooks server (asks first) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="twinbooks"
+                    android:host="connect" />
+            </intent-filter>
         </activity>
 
         <service

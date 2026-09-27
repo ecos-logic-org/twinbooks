@@ -88,14 +88,26 @@ fun ServerSettingsDialog(
                 if (useServer) {
                     OutlinedTextField(
                         value = url,
-                        onValueChange = { url = it; onEdited() },
+                        onValueChange = { typed ->
+                            // A pasted twinbooks://connect link fills in the address and the key
+                            val link = ServerSettingsStore.parseConnectLink(typed)
+                            if (link != null) {
+                                url = link.baseUrl
+                                apiKey = link.apiKey
+                            } else {
+                                url = typed
+                            }
+                            onEdited()
+                        },
                         label = { Text("Dirección del servidor") },
                         placeholder = { Text("https://twinbooks.example.org") },
-                        singleLine = true,
-                        isError = url.isNotBlank() && normalizedUrl == null,
                         supportingText = if (url.isNotBlank() && normalizedUrl == null) {
                             { Text("Dirección no válida") }
-                        } else null,
+                        } else {
+                            { Text("También puedes pegar aquí un enlace twinbooks://connect") }
+                        },
+                        singleLine = true,
+                        isError = url.isNotBlank() && normalizedUrl == null,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -158,4 +170,62 @@ private fun TestResult(result: ServerStatus?) {
         ServerStatus.UNAUTHORIZED -> Text("El servidor rechaza la clave", color = Color(0xFFFFA726), fontSize = 13.sp)
         else -> Text("No se puede conectar", color = Color(0xFFEF5350), fontSize = 13.sp)
     }
+}
+
+/**
+ * Confirmation for a twinbooks://connect link: never switch servers behind the user's back.
+ * [testResult] is the connection test started when the link arrived.
+ */
+@Composable
+fun ConnectServerDialog(
+    config: ServerConfig,
+    testResult: ServerStatus?,
+    onConnect: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("¿Conectar con este servidor?") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Un enlace quiere configurar TwinBooks para usar este servidor para alinear " +
+                        "los párrafos y traducir:",
+                    fontSize = 14.sp
+                )
+                Text(config.baseUrl, fontSize = 15.sp, color = Color(0xFF80CBC4))
+                Text(
+                    if (config.apiKey.isBlank()) "Sin clave de API." else "Incluye una clave de API.",
+                    fontSize = 13.sp,
+                    color = Color(0xFFB0B0B0)
+                )
+                Text(
+                    "El texto de tus libros se enviará a ese servidor. Conéctate solo a servidores " +
+                        "de confianza. Puedes cambiarlo cuando quieras con el botón ⚙️ de la estantería.",
+                    fontSize = 13.sp,
+                    color = Color(0xFFB0B0B0)
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Prueba de conexión:", fontSize = 13.sp, color = Color(0xFFB0B0B0))
+                    TestResult(testResult)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConnect) {
+                Text("Conectar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }

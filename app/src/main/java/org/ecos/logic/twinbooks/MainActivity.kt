@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.edit
 import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
+import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
 import org.ecos.logic.twinbooks.ui.screens.bookshelf.BookshelfScreen
 import org.ecos.logic.twinbooks.ui.screens.reader.ReaderScreen
 import org.ecos.logic.twinbooks.ui.theme.TwinBooksTheme
@@ -30,17 +31,24 @@ class MainActivity : ComponentActivity() {
 
     // EPUB opened from another app (browser, file manager) waiting to be added to the bookshelf
     private var incomingBookUri by mutableStateOf<Uri?>(null)
+    // twinbooks://connect link waiting for the user to confirm the server
+    private var incomingServerLink by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) incomingBookUri = intent.epubUri()
+        if (savedInstanceState == null) {
+            incomingBookUri = intent.epubUri()
+            incomingServerLink = intent.serverLink()
+        }
         setContent {
             TwinBooksTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     MainScreen(
                         incomingBookUri = incomingBookUri,
-                        onIncomingBookConsumed = { incomingBookUri = null }
+                        onIncomingBookConsumed = { incomingBookUri = null },
+                        incomingServerLink = incomingServerLink,
+                        onIncomingServerLinkConsumed = { incomingServerLink = null }
                     )
                 }
             }
@@ -51,9 +59,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.epubUri()?.let { incomingBookUri = it }
+        intent.serverLink()?.let { incomingServerLink = it }
     }
 
-    private fun Intent.epubUri(): Uri? = if (action == Intent.ACTION_VIEW) data else null
+    private fun Intent.epubUri(): Uri? =
+        if (action == Intent.ACTION_VIEW && !isServerLink()) data else null
+
+    private fun Intent.serverLink(): String? =
+        if (action == Intent.ACTION_VIEW && isServerLink()) data?.toString() else null
+
+    private fun Intent.isServerLink() =
+        data?.scheme.equals(ServerSettingsStore.CONNECT_LINK_SCHEME, ignoreCase = true)
 }
 
 private const val PREFS_NAME = "twinbooks_prefs"
@@ -65,7 +81,9 @@ private const val NO_SESSION = -1L
 @Composable
 fun MainScreen(
     incomingBookUri: Uri? = null,
-    onIncomingBookConsumed: () -> Unit = {}
+    onIncomingBookConsumed: () -> Unit = {},
+    incomingServerLink: String? = null,
+    onIncomingServerLinkConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
@@ -78,12 +96,14 @@ fun MainScreen(
         prefs.edit { if (id == NO_SESSION) remove(KEY_OPEN_SESSION_ID) else putLong(KEY_OPEN_SESSION_ID, id) }
     }
 
-    // A book opened from another app always lands on the bookshelf (which asks how to read it)
-    LaunchedEffect(incomingBookUri) {
-        if (incomingBookUri != null && openSessionId != NO_SESSION) openSession(NO_SESSION)
+    // A book or server link opened from another app always lands on the bookshelf (which asks
+    // how to read it / whether to use that server)
+    val hasIncoming = incomingBookUri != null || incomingServerLink != null
+    LaunchedEffect(hasIncoming) {
+        if (hasIncoming && openSessionId != NO_SESSION) openSession(NO_SESSION)
     }
 
-    if (openSessionId != NO_SESSION && incomingBookUri == null) {
+    if (openSessionId != NO_SESSION && !hasIncoming) {
         ReaderScreen(
             sessionId = openSessionId,
             onBackToBookshelf = { openSession(NO_SESSION) }
@@ -93,6 +113,8 @@ fun MainScreen(
             onSessionSelected = { session -> openSession(session.id) },
             incomingBookUri = incomingBookUri,
             onIncomingBookConsumed = onIncomingBookConsumed,
+            incomingServerLink = incomingServerLink,
+            onIncomingServerLinkConsumed = onIncomingServerLinkConsumed,
             onCreateNewPair = {
                 // The BookshelfScreen handles new pair creation internally
             }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.ecos.logic.twinbooks.BuildConfig
+import java.net.URLDecoder
 
 /**
  * TwinBooks server used for paragraph alignment (two-book mode) and translation
@@ -70,6 +71,29 @@ class ServerSettingsStore(context: Context) {
         private const val KEY_API_KEY = "api_key"
         private const val KEY_ENABLED = "enabled"
         private const val API_PATH = "api/v1/"
+
+        /** twinbooks://connect?url=<server address>&key=<API key> sets up a server */
+        const val CONNECT_LINK_SCHEME = "twinbooks"
+        const val CONNECT_LINK_HOST = "connect"
+        private const val CONNECT_LINK_PREFIX = "$CONNECT_LINK_SCHEME://$CONNECT_LINK_HOST"
+
+        /**
+         * Server described by a connect link, or null if [link] isn't one or its address is
+         * invalid. The address goes through [normalizeBaseUrl]; the key is optional.
+         */
+        fun parseConnectLink(link: String): ServerConfig? {
+            val trimmed = link.trim()
+            if (!trimmed.startsWith(CONNECT_LINK_PREFIX, ignoreCase = true)) return null
+            val rest = trimmed.substring(CONNECT_LINK_PREFIX.length).trimStart('/')
+            if (!rest.startsWith("?")) return null
+            val params = rest.substring(1).split('&').mapNotNull { part ->
+                val eq = part.indexOf('=')
+                if (eq <= 0) null
+                else part.substring(0, eq) to URLDecoder.decode(part.substring(eq + 1), "UTF-8")
+            }.toMap()
+            val baseUrl = normalizeBaseUrl(params["url"].orEmpty()) ?: return null
+            return ServerConfig(baseUrl, params["key"].orEmpty().trim())
+        }
 
         /**
          * Turns what the user typed into the API base URL, or null if it isn't a valid

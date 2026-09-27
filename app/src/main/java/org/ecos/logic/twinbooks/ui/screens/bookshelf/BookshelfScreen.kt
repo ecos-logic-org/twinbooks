@@ -2,6 +2,8 @@ package org.ecos.logic.twinbooks.ui.screens.bookshelf
 
 import org.ecos.logic.twinbooks.ui.screens.reader.serverStatusLook
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
+import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
+import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -109,7 +111,9 @@ fun BookshelfScreen(
     onSessionSelected: (ReadingSession) -> Unit,
     onCreateNewPair: () -> Unit,
     incomingBookUri: Uri? = null,
-    onIncomingBookConsumed: () -> Unit = {}
+    onIncomingBookConsumed: () -> Unit = {},
+    incomingServerLink: String? = null,
+    onIncomingServerLinkConsumed: () -> Unit = {}
 ) {
     val sessions by viewModel.sessions.collectAsState()
     val incomingBook by viewModel.incomingBook.collectAsState()
@@ -117,6 +121,22 @@ fun BookshelfScreen(
     val serverConfig by viewModel.serverConfig.collectAsState()
     val serverTest by viewModel.serverTest.collectAsState()
     var showServerSettings by remember { mutableStateOf(false) }
+    // Server from a twinbooks://connect link, waiting for confirmation
+    var linkedServer by remember { mutableStateOf<ServerConfig?>(null) }
+    var showInvalidLink by remember { mutableStateOf(false) }
+
+    LaunchedEffect(incomingServerLink) {
+        incomingServerLink?.let { link ->
+            val config = ServerSettingsStore.parseConnectLink(link)
+            if (config == null) {
+                showInvalidLink = true
+            } else {
+                linkedServer = config
+                viewModel.testServer(config)
+            }
+            onIncomingServerLinkConsumed()
+        }
+    }
 
     LaunchedEffect(incomingBookUri) {
         incomingBookUri?.let {
@@ -295,6 +315,34 @@ fun BookshelfScreen(
 } // Box
 
     // New pair dialog
+    linkedServer?.let { config ->
+        ConnectServerDialog(
+            config = config,
+            testResult = serverTest,
+            onConnect = {
+                viewModel.saveServer(config)
+                linkedServer = null
+            },
+            onDismiss = {
+                viewModel.clearServerTest()
+                linkedServer = null
+            }
+        )
+    }
+
+    if (showInvalidLink) {
+        AlertDialog(
+            onDismissRequest = { showInvalidLink = false },
+            title = { Text("Enlace no válido") },
+            text = { Text("Este enlace de conexión no contiene una dirección de servidor válida.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { showInvalidLink = false }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
     if (showServerSettings) {
         ServerSettingsDialog(
             current = serverConfig,
