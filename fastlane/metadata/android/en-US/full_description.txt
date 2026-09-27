@@ -1,14 +1,36 @@
-TwinBooks is a dual-pane EPUB reader designed for language learners. Open the same book in two different languages and read them side by side on your Android tablet.
+<p><b>TwinBooks</b> helps you learn English by reading the same book twice: the English edition and its Spanish translation, side by side and kept in sync paragraph by paragraph.</p>
 
-Features:
+<p><b>Two books side by side</b></p>
+<ul>
+<li>Open an English EPUB on the left and its Spanish edition on the right.</li>
+<li>Chapters and paragraphs are aligned automatically, even when the translator split or merged them. Fix a mismatch with a double tap and TwinBooks remembers it.</li>
+<li>The current paragraph and sentence are highlighted in both books.</li>
+</ul>
 
-- Split-screen view with left and right book panels
-- Paragraph synchronization between books
-- Sentence-level navigation and highlighting
-- Dark theme for comfortable reading
-- Table of contents navigation
-- Font size adjustment
-- Reading position persistence - resume exactly where you left off
-- Landscape-optimized for tablets
+<p><b>Single-book mode</b></p>
+<ul>
+<li>Only have the English book? Read it full screen with the Spanish translation below each paragraph.</li>
+</ul>
 
-Perfect for bilingual reading, parallel texts, and language immersion. Open an English book on the left and your native language on the right to learn vocabulary and grammar in context.
+<p><b>Bilingual read-aloud</b></p>
+<ul>
+<li>Listen in English only, English → Spanish, Spanish → English or English → Spanish → English, with adjustable speed.</li>
+<li>The sentence being read is highlighted, in English and in Spanish.</li>
+<li>Play, pause and skip from the lock screen and the notification.</li>
+</ul>
+
+<p><b>Works offline, no Google services</b></p>
+<ul>
+<li>Alignment and translation run on the device with Mozilla's open translation models (Firefox Translations). The English → Spanish model (about 25 MB) is downloaded once, the first time it is needed.</li>
+<li>Optionally, connect to a TwinBooks server (open source, you can host your own) for even better alignment and translations. Set it up in the bookshelf settings or by opening a twinbooks://connect link or QR code.</li>
+</ul>
+
+<p><b>And also</b></p>
+<ul>
+<li>Bookshelf with covers and progress for each book.</li>
+<li>Table of contents, sentence and paragraph navigation, adjustable font size.</li>
+<li>Your position and settings are saved automatically.</li>
+<li>Dark theme designed for landscape reading.</li>
+</ul>
+
+<p>The app's source code is Apache-2.0; the APK is distributed under the GPL-3.0 because it includes the slimt translation engine.</p>

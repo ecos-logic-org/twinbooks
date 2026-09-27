@@ -1,0 +1,6 @@
+- On-device translation with Mozilla's open models: no Google services, works offline
+- The TwinBooks server is now optional and can be set up in the app (bookshelf ⚙️) or with a twinbooks://connect link or QR code
+- The Spanish sentence being read aloud is highlighted in two-book mode
+- New app icon
+- Only HTTPS servers are allowed
+- Much smaller app

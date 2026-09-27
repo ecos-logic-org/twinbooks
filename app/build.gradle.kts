@@ -31,8 +31,8 @@ android {
         applicationId = "org.ecos.logic.twinbooks"
         minSdk = 30
         targetSdk = 37
-        versionCode = 3
-        versionName = "2.1.0"
+        versionCode = 4
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

@@ -1,0 +1,6 @@
+- Traducción en el dispositivo con los modelos abiertos de Mozilla: sin servicios de Google y sin conexión
+- El servidor TwinBooks ahora es opcional y se configura en la app (⚙️ en la estantería) o con un enlace o QR twinbooks://connect
+- En modo dos libros se resalta la frase en castellano que se está leyendo en voz alta
+- Nuevo icono
+- Solo se admiten servidores HTTPS
+- App mucho más ligera

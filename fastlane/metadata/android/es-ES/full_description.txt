@@ -1,0 +1,36 @@
+<p><b>TwinBooks</b> te ayuda a aprender inglés leyendo el mismo libro dos veces: la edición en inglés y su traducción al castellano, una junto a otra y sincronizadas párrafo a párrafo.</p>
+
+<p><b>Dos libros lado a lado</b></p>
+<ul>
+<li>Abre un EPUB en inglés a la izquierda y su edición en castellano a la derecha.</li>
+<li>Los capítulos y párrafos se alinean automáticamente, aunque el traductor los haya partido o unido. Si alguno no cuadra, corrígelo con una doble pulsación y TwinBooks lo recordará.</li>
+<li>El párrafo y la frase actuales se resaltan en los dos libros.</li>
+</ul>
+
+<p><b>Modo libro único</b></p>
+<ul>
+<li>¿Solo tienes el libro en inglés? Léelo a pantalla completa con la traducción al castellano debajo de cada párrafo.</li>
+</ul>
+
+<p><b>Lectura en voz alta bilingüe</b></p>
+<ul>
+<li>Escucha solo en inglés, inglés → castellano, castellano → inglés o inglés → castellano → inglés, con velocidad ajustable.</li>
+<li>Se resalta la frase que se está leyendo, en inglés y en castellano.</li>
+<li>Reproduce, pausa y salta desde la pantalla de bloqueo y la notificación.</li>
+</ul>
+
+<p><b>Funciona sin conexión y sin servicios de Google</b></p>
+<ul>
+<li>La alineación y la traducción se hacen en el dispositivo con los modelos de traducción abiertos de Mozilla (Firefox Translations). El modelo inglés → castellano (unos 25 MB) se descarga una sola vez, la primera vez que hace falta.</li>
+<li>Si quieres, puedes conectar un servidor TwinBooks (open source, puedes alojar el tuyo) para mejorar aún más la alineación y las traducciones. Se configura en los ajustes de la estantería o abriendo un enlace o código QR twinbooks://connect.</li>
+</ul>
+
+<p><b>Y además</b></p>
+<ul>
+<li>Estantería con portadas y el progreso de cada libro.</li>
+<li>Índice, navegación por frases y párrafos y tamaño de letra ajustable.</li>
+<li>La posición y los ajustes se guardan automáticamente.</li>
+<li>Tema oscuro pensado para leer en horizontal.</li>
+</ul>
+
+<p>El código fuente de la app es Apache-2.0; el APK se distribuye bajo la GPL-3.0 porque incluye el motor de traducción slimt.</p>
