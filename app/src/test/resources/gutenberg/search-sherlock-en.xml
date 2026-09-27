@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/search.opds/?query=sherlock+holmes</id>
+<updated>2026-09-27T17:51:33Z</updated>
+<title>Books: sherlock holmes</title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=sherlock+holmes"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/search/?query=sherlock+holmes"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<link rel="next" title="Next Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=sherlock+holmes&amp;start_index=26"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/subjects/search.opds/?query=sherlock+holmes</id>
+<title>Subjects</title>
+<content type="text">2 subject headings match your search.</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/subjects/search.opds/?query=sherlock+holmes"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/1661.opds</id>
+<title>The Adventures of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/1661.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/244.opds</id>
+<title>A Study in Scarlet</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/244.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/2852.opds</id>
+<title>The Hound of the Baskervilles</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2852.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/6133.opds</id>
+<title>The Extraordinary Adventures of Arsène Lupin, Gentleman-Burglar</title>
+<content type="text">Maurice Leblanc</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/6133.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/108.opds</id>
+<title>The Return of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/108.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/2097.opds</id>
+<title>The Sign of the Four</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2097.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/834.opds</id>
+<title>The Memoirs of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/834.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/48320.opds</id>
+<title>Adventures of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/48320.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/69700.opds</id>
+<title>The case-book of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/69700.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/3289.opds</id>
+<title>The Valley of Fear</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/3289.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/2350.opds</id>
+<title>His last bow :  Some later reminiscences of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2350.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/221.opds</id>
+<title>The Return of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/221.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/3070.opds</id>
+<title>The Hound of the Baskervilles</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/3070.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/76433.opds</id>
+<title>La marque des quatre (French)</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/76433.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/76520.opds</id>
+<title>Hänen viimeinen tervehdyksensä :  Muutamia muistelmia Sherlock Holmesista (Finnish)</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/76520.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/28733.opds</id>
+<title>The Adventures of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/28733.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/21520.opds</id>
+<title>The Hound of the Baskervilles</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/21520.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/9551.opds</id>
+<title>The Adventures of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/9551.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/21586.opds</id>
+<title>The Sign of the Four</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/21586.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/74548.opds</id>
+<title>Great short stories, Volume 1 (of 3) :  Detective stories</title>
+<content type="text">1528 downloads</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/74548.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/66991.opds</id>
+<title>Memories and Adventures</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/66991.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/9555.opds</id>
+<title>The Memoirs of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/9555.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/9553.opds</id>
+<title>The Return of Sherlock Holmes</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/9553.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/2346.opds</id>
+<title>The Adventure of the Bruce-Partington Plans</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2346.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:51:33Z</updated>
+<id>https://www.gutenberg.org/ebooks/2347.opds</id>
+<title>The Adventure of the Dying Detective</title>
+<content type="text">Arthur Conan Doyle</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2347.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+</feed>

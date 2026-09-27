@@ -24,6 +24,8 @@ paragraph by paragraph.
   the book cover shown in the player.
 - **Sentence and paragraph navigation**: step forward and back through sentences and paragraphs.
 - **Table of contents** for jumping between chapters.
+- **Project Gutenberg**: search the catalog of over 70,000 free public-domain books from the
+  bookshelf, in English or Spanish, and download them straight into the app.
 - **Bookshelf**: keep your book pairs and single books on a shelf with covers and per-book
   progress, and continue where you left off.
 - **Automatic progress saving**: your position, reading mode and TTS settings are saved all the

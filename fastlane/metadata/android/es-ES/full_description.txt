@@ -27,6 +27,7 @@
 
 <p><b>Y además</b></p>
 <ul>
+<li>Busca y descarga libros gratuitos de dominio público de Project Gutenberg, en inglés o en castellano, desde la propia estantería.</li>
 <li>Estantería con portadas y el progreso de cada libro.</li>
 <li>Índice, navegación por frases y párrafos y tamaño de letra ajustable.</li>
 <li>La posición y los ajustes se guardan automáticamente.</li>

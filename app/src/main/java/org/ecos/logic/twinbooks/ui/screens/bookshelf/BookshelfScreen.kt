@@ -4,15 +4,15 @@ import org.ecos.logic.twinbooks.ui.screens.reader.serverStatusLook
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
 import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
+import org.ecos.logic.twinbooks.gutenberg.GutenbergLanguage
+import org.ecos.logic.twinbooks.ui.viewmodel.GutenbergPreset
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,10 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,19 +30,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NavigateNext
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Translate
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -82,7 +78,7 @@ import org.ecos.logic.twinbooks.ui.viewmodel.SessionWithCover
  * Returns null if decoding fails.
  */
 @Composable
-private fun rememberCoverBitmap(dataUri: String?): ImageBitmap? {
+internal fun rememberCoverBitmap(dataUri: String?): ImageBitmap? {
     val context = LocalContext.current
     return remember(dataUri) {
         dataUri?.let { uri ->
@@ -121,6 +117,13 @@ fun BookshelfScreen(
     val serverConfig by viewModel.serverConfig.collectAsState()
     val serverTest by viewModel.serverTest.collectAsState()
     var showServerSettings by remember { mutableStateOf(false) }
+    var showGutenberg by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
+    // Gutenberg opened from the new-pair dialog: the side the download goes to (null = free search)
+    var gutenbergTarget by remember { mutableStateOf<PairSide?>(null) }
+    var gutenbergPreset by remember { mutableStateOf<GutenbergPreset?>(null) }
+    // Author of the Gutenberg book that started a pair: seeds the search for the other half
+    var pairAuthorHint by remember { mutableStateOf("") }
     // Server from a twinbooks://connect link, waiting for confirmation
     var linkedServer by remember { mutableStateOf<ServerConfig?>(null) }
     var showInvalidLink by remember { mutableStateOf(false) }
@@ -204,112 +207,86 @@ fun BookshelfScreen(
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-        // Header
+        // Header: add, discover, settings (the server status is just a dot on the gear)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "📚 Estantería",
-                    fontSize = 28.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                // No server set up: nothing to report, everything runs on the device
-                if (serverStatus != ServerStatus.DISABLED) {
-                    ServerStatusChip(status = serverStatus, onClick = { viewModel.checkServer() })
+            Box {
+                Button(onClick = { showAddMenu = true }) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Añadir", fontSize = 13.sp)
+                }
+                DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Par de libros EN/ES") },
+                        leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                        onClick = {
+                            showAddMenu = false
+                            showNewPairDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Libro único (inglés con traducción)") },
+                        leadingIcon = { Icon(Icons.Default.Translate, contentDescription = null) },
+                        onClick = {
+                            showAddMenu = false
+                            singleBookLauncher.launch(arrayOf("application/epub+zip"))
+                        }
+                    )
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Pair EN/ES button
-                Button(onClick = { showNewPairDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Nuevo par EN/ES", tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Par EN/ES", fontSize = 13.sp)
-                }
-                // Single book button (auto-translation)
-                Button(
-                    onClick = { singleBookLauncher.launch(arrayOf("application/epub+zip")) },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF00695C)
-                    )
-                ) {
-                    Icon(Icons.Default.Translate, contentDescription = "Libro único", tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Libro único", fontSize = 13.sp)
-                }
-                // Optional TwinBooks server (alignment + translation)
-                IconButton(onClick = { showServerSettings = true }) {
+            // Search and download public-domain books
+            Button(
+                onClick = {
+                    gutenbergTarget = null
+                    gutenbergPreset = null
+                    showGutenberg = true
+                },
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF37474F)
+                )
+            ) {
+                Icon(Icons.Default.CloudDownload, contentDescription = "Buscar en Project Gutenberg", tint = Color.White)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Gutenberg", fontSize = 13.sp)
+            }
+            // Optional TwinBooks server (alignment + translation)
+            Box {
+                IconButton(onClick = {
+                    viewModel.checkServer()
+                    showServerSettings = true
+                }) {
                     Icon(Icons.Default.Settings, contentDescription = "Servidor TwinBooks", tint = Color(0xFFB0B0B0))
+                }
+                if (serverStatus != ServerStatus.DISABLED) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 8.dp)
+                            .size(10.dp)
+                            .background(serverStatusLook(serverStatus).second, CircleShape)
+                    )
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Sessions list
+        // The books, standing on shelves
         if (sessions.isEmpty()) {
-            // Empty state
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-                    .clickable { showNewPairDialog = true }
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PhotoLibrary,
-                        contentDescription = "Empty shelf",
-                        tint = Color(0xFF444444),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No hay pares de libros guardados",
-                        color = Color(0xFF888888),
-                        fontSize = 18.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Toca el botón + para añadir tu primer par",
-                        color = Color(0xFF666666),
-                        fontSize = 14.sp,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
-            }
+            EmptyShelf(onClick = { showAddMenu = true })
         } else {
-            // Grid of up to 3 columns: 3 in landscape, 2 in portrait (cards need ~380dp)
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-                val columns = (maxWidth / 380.dp).toInt().coerceIn(1, 3)
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(columns),
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(sessions, key = { it.session.id }) { sessionWithCover ->
-                        SessionCard(
-                            sessionWithCover = sessionWithCover,
-                            onClick = { onSessionSelected(sessionWithCover.session) },
-                            onDelete = {
-                                sessionToDelete = sessionWithCover.session
-                                showDeleteDialog = true
-                            }
-                        )
-                    }
+            BookShelf(
+                sessions = sessions,
+                onOpen = onSessionSelected,
+                onDelete = { session ->
+                    sessionToDelete = session
+                    showDeleteDialog = true
                 }
-            }
+            )
         }
     } // Column
 } // Box
@@ -343,9 +320,38 @@ fun BookshelfScreen(
         )
     }
 
+    if (showGutenberg) {
+        GutenbergSearchDialog(
+            preset = gutenbergPreset,
+            onDownloaded = { downloaded ->
+                showGutenberg = false
+                when (gutenbergTarget) {
+                    PairSide.LEFT -> {
+                        viewModel.setLeftBookUri(downloaded.uri)
+                        leftBookSelected = true
+                    }
+                    PairSide.RIGHT -> {
+                        viewModel.setRightBookUri(downloaded.uri)
+                        rightBookSelected = true
+                    }
+                    null -> {
+                        pairAuthorHint = downloaded.author
+                        viewModel.offerLocalBook(downloaded.uri, downloaded.language)
+                    }
+                }
+                gutenbergTarget = null
+            },
+            onDismiss = {
+                showGutenberg = false
+                gutenbergTarget = null
+            }
+        )
+    }
+
     if (showServerSettings) {
         ServerSettingsDialog(
             current = serverConfig,
+            status = serverStatus,
             testResult = serverTest,
             onTest = viewModel::testServer,
             onEdited = viewModel::clearServerTest,
@@ -362,7 +368,20 @@ fun BookshelfScreen(
 
     if (showNewPairDialog) {
         NewPairDialog(
-            onDismiss = { showNewPairDialog = false },
+            onDismiss = {
+                showNewPairDialog = false
+                pairAuthorHint = ""
+            },
+            onLeftGutenberg = {
+                gutenbergTarget = PairSide.LEFT
+                gutenbergPreset = GutenbergPreset(pairAuthorHint, GutenbergLanguage.ENGLISH)
+                showGutenberg = true
+            },
+            onRightGutenberg = {
+                gutenbergTarget = PairSide.RIGHT
+                gutenbergPreset = GutenbergPreset(pairAuthorHint, GutenbergLanguage.SPANISH)
+                showGutenberg = true
+            },
             onLeftBookClick = {
                 leftBookLauncher.launch(arrayOf("application/epub+zip"))
                 leftBookSelected = true
@@ -382,6 +401,7 @@ fun BookshelfScreen(
                     showNewPairDialog = false
                     leftBookSelected = false
                     rightBookSelected = false
+                    pairAuthorHint = ""
                 }
             }
         )
@@ -449,153 +469,10 @@ fun BookshelfScreen(
 }
 
 @Composable
-private fun SessionCard(
-    sessionWithCover: SessionWithCover,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val session = sessionWithCover.session
-    val leftCoverImage = sessionWithCover.leftCoverImage
-    val coverBitmap = rememberCoverBitmap(leftCoverImage)
-    val leftProgress = (session.leftProgressPercent).toInt()
-    val rightProgress = (session.rightProgressPercent).toInt()
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A1A1A)
-        ),
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF333333))
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Book cover and titles
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Cover image
-                if (coverBitmap != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp, 72.dp)
-                            .background(Color(0xFF2A2A2A))
-                            .border(1.dp, Color(0xFF444444))
-                    ) {
-                        androidx.compose.foundation.Image(
-                            bitmap = coverBitmap,
-                            contentDescription = session.leftTitle,
-                            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                } else {
-                    // Placeholder for missing cover
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp, 72.dp)
-                            .background(Color(0xFF2A2A2A))
-                            .border(1.dp, Color(0xFF444444)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MenuBook,
-                            contentDescription = "Book cover",
-                            tint = Color(0xFF555555),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-
-                // Book titles
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = session.leftTitle,
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                    )
-                    (session.rightTitle?.takeIf { it.isNotEmpty() })?.let { rightTitle ->
-                        Text(
-                            text = rightTitle,
-                            color = Color(0xFFB0B0B0),
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // Delete button
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(Color(0xFF333333), RoundedCornerShape(8.dp))
-                        .clickable { onDelete() }
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = Color(0xFFFF5252),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Progress indicators
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Left book progress
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Izquierda: ${session.leftChapterIndex + 1} / ${leftProgress}%",
-                        color = Color(0xFF90CAF9),
-                        fontSize = 12.sp
-                    )
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth().height(4.dp),
-                        progress = session.leftProgressPercent / 100f,
-                        color = Color(0xFF90CAF9),
-                        trackColor = Color(0xFF333333)
-                    )
-                }
-
-                // Right book progress (if exists)
-                if (session.rightBookUri != null) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Derecha: ${session.rightChapterIndex + 1} / ${rightProgress}%",
-                            color = Color(0xFFA5D6A7),
-                            fontSize = 12.sp
-                        )
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                            progress = session.rightProgressPercent / 100f,
-                            color = Color(0xFFA5D6A7),
-                            trackColor = Color(0xFF333333)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun NewPairDialog(
     onDismiss: () -> Unit,
+    onLeftGutenberg: () -> Unit,
+    onRightGutenberg: () -> Unit,
     onLeftBookClick: () -> Unit,
     onRightBookClick: () -> Unit,
     leftBookSelected: Boolean,
@@ -662,6 +539,8 @@ private fun NewPairDialog(
                     }
                 }
 
+                if (!leftBookSelected) GutenbergSideButton("Buscar en Gutenberg (inglés)", onLeftGutenberg)
+
                 Spacer(modifier = Modifier.height(12.dp))
 
                 // Right book selector
@@ -706,6 +585,8 @@ private fun NewPairDialog(
                         }
                     }
                 }
+
+                if (!rightBookSelected) GutenbergSideButton("Buscar en Gutenberg (castellano)", onRightGutenberg)
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -789,6 +670,18 @@ private fun NewPairDialog(
     )
 }
 
+/** Side of a pair a Gutenberg download goes to */
+private enum class PairSide { LEFT, RIGHT }
+
+@Composable
+private fun GutenbergSideButton(label: String, onClick: () -> Unit) {
+    androidx.compose.material3.TextButton(onClick = onClick) {
+        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(label, fontSize = 13.sp)
+    }
+}
+
 private fun persistUriPermission(context: Context, uri: Uri) {
     try {
         context.contentResolver.takePersistableUriPermission(
@@ -822,24 +715,32 @@ private fun IncomingBookDialog(
                     }
                 } else {
                     Text("¿Cómo quieres leerlo?", color = Color(0xFFB0B0B0))
-                    IncomingBookOption(
-                        "Libro único",
-                        "A pantalla completa, con traducción automática al castellano",
-                        Icons.Default.Translate,
-                        onSingleBook
-                    )
-                    IncomingBookOption(
-                        "Libro en inglés de un par",
-                        "Panel izquierdo; después eliges el libro en castellano",
-                        Icons.Default.Add,
-                        onPairLeft
-                    )
-                    IncomingBookOption(
-                        "Libro en castellano de un par",
-                        "Panel derecho; después eliges el libro en inglés",
-                        Icons.Default.Add,
-                        onPairRight
-                    )
+                    // Known language (Gutenberg): the translator is EN→ES, so a Spanish book can
+                    // only be the right half of a pair, and an English one never the right half
+                    val english = book.language != GutenbergLanguage.SPANISH
+                    val spanish = book.language != GutenbergLanguage.ENGLISH
+                    if (english) {
+                        IncomingBookOption(
+                            "Libro único",
+                            "A pantalla completa, con traducción automática al castellano",
+                            Icons.Default.Translate,
+                            onSingleBook
+                        )
+                        IncomingBookOption(
+                            "Libro en inglés de un par",
+                            "Panel izquierdo; después eliges el libro en castellano",
+                            Icons.Default.Add,
+                            onPairLeft
+                        )
+                    }
+                    if (spanish) {
+                        IncomingBookOption(
+                            "Libro en castellano de un par",
+                            "Panel derecho; después eliges el libro en inglés",
+                            Icons.Default.Add,
+                            onPairRight
+                        )
+                    }
                 }
             }
         },
@@ -871,23 +772,5 @@ private fun IncomingBookOption(
             Text(title, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Text(subtitle, color = Color(0xFF9E9E9E), fontSize = 13.sp)
         }
-    }
-}
-
-/** Alignment server availability; tap to check again. */
-@Composable
-private fun ServerStatusChip(status: ServerStatus, onClick: () -> Unit) {
-    val (icon, tint, label) = serverStatusLook(status)
-    Row(
-        modifier = Modifier
-            .background(Color(0xFF1E1E1E), RoundedCornerShape(16.dp))
-            .border(1.dp, tint.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
-        Text(text = label, color = tint, fontSize = 12.sp)
     }
 }

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/search.opds/?query=quijote+l.es</id>
+<updated>2026-09-27T17:52:53Z</updated>
+<title>Books: quijote  Language: Spanish </title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?query=quijote+l.es"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/search/?query=quijote+l.es"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-09-27T17:52:53Z</updated>
+<id>https://www.gutenberg.org/ebooks/2000.opds</id>
+<title>Don Quijote (Spanish)</title>
+<content type="text">Miguel de Cervantes Saavedra</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2000.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:52:53Z</updated>
+<id>https://www.gutenberg.org/ebooks/57448.opds</id>
+<title>Meditaciones del Quijote (Spanish)</title>
+<content type="text">José Ortega y Gasset</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/57448.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:52:53Z</updated>
+<id>https://www.gutenberg.org/ebooks/60884.opds</id>
+<title>El Quijote apócrifo (Spanish)</title>
+<content type="text">Alonso Fernández de Avellaneda</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/60884.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:52:53Z</updated>
+<id>https://www.gutenberg.org/ebooks/75472.opds</id>
+<title>Vida de Don Quijote y Sancho (Spanish)</title>
+<content type="text">Miguel de Unamuno</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/75472.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+<entry>
+<updated>2026-09-27T17:52:53Z</updated>
+<id>https://www.gutenberg.org/ebooks/67481.opds</id>
+<title>Los valores literarios (Spanish)</title>
+<content type="text">Azorín</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/67481.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,"/>
+</entry>
+</feed>

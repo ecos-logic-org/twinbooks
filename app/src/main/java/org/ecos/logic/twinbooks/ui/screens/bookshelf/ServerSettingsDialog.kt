@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
 import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
+import org.ecos.logic.twinbooks.ui.screens.reader.serverStatusLook
 
 /**
  * Optional TwinBooks server (paragraph alignment + translation). Without one the app
@@ -46,6 +47,7 @@ import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
 @Composable
 fun ServerSettingsDialog(
     current: ServerConfig,
+    status: ServerStatus,
     testResult: ServerStatus?,
     onTest: (ServerConfig) -> Unit,
     onEdited: () -> Unit,
@@ -78,6 +80,11 @@ fun ServerSettingsDialog(
                     fontSize = 13.sp,
                     color = Color(0xFFB0B0B0)
                 )
+                if (current.isEnabled) {
+                    // Status of the saved server (the bookshelf only shows a coloured dot)
+                    val (_, tint, label) = serverStatusLook(status)
+                    Text(label, color = tint, fontSize = 13.sp)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Usar un servidor", modifier = Modifier.weight(1f))
                     Switch(

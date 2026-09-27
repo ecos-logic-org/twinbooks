@@ -13,6 +13,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.StateFlow
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
@@ -21,6 +23,7 @@ import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
 import org.ecos.logic.twinbooks.domain.model.BookContent
 import org.ecos.logic.twinbooks.domain.model.BookRepository
 import org.ecos.logic.twinbooks.domain.model.ReadingSession
+import org.ecos.logic.twinbooks.gutenberg.GutenbergLanguage
 import javax.inject.Inject
 
 @HiltViewModel
@@ -65,7 +68,9 @@ class BookshelfViewModel @Inject constructor(
         val uri: String,
         val title: String,
         /** Session that already uses this book, if any */
-        val existingSession: ReadingSession?
+        val existingSession: ReadingSession?,
+        /** Known language (Gutenberg downloads): only the options that make sense are offered */
+        val language: GutenbergLanguage? = null
     )
 
     private val _incomingBook = MutableStateFlow<IncomingBook?>(null)
@@ -85,14 +90,18 @@ class BookshelfViewModel @Inject constructor(
     fun loadSessions() {
         viewModelScope.launch {
             val sessions = bookRepository.getAllSessions()
-            // Load cover images for each session (only left book for bookshelf)
+            // Covers of both books (a pair stands on the shelf as two books); each one means
+            // opening its EPUB, so they load in parallel
             val sessionsWithCover = sessions.map { session ->
-                val leftBook = bookRepository.loadBookFromUri(session.leftBookUri)
-                SessionWithCover(
-                    session = session,
-                    leftCoverImage = leftBook?.coverImage
-                )
-            }
+                async {
+                    val left = async { bookRepository.loadBookFromUri(session.leftBookUri)?.coverImage }
+                    val right = async {
+                        session.rightBookUri?.takeIf { !session.isSingleBookMode }
+                            ?.let { bookRepository.loadBookFromUri(it)?.coverImage }
+                    }
+                    SessionWithCover(session, left.await(), right.await())
+                }
+            }.awaitAll()
             _sessions.value = sessionsWithCover
         }
     }
@@ -179,15 +188,24 @@ class BookshelfViewModel @Inject constructor(
                 Log.w("BookshelfViewModel", "Could not import $uri")
                 return@launch
             }
-            val book = bookRepository.loadBookFromUri(localUri)
-            if (book == null) {
-                Log.w("BookshelfViewModel", "Imported file is not a readable EPUB: $localUri")
-                return@launch
-            }
-            val existing = bookRepository.getAllSessions()
-                .firstOrNull { it.leftBookUri == localUri || it.rightBookUri == localUri }
-            _incomingBook.value = IncomingBook(localUri, book.title, existing)
+            offer(localUri)
         }
+    }
+
+    /** A book already in the app's storage (e.g. downloaded from Gutenberg): ask how to read it. */
+    fun offerLocalBook(localUri: String, language: GutenbergLanguage? = null) {
+        viewModelScope.launch { offer(localUri, language) }
+    }
+
+    private suspend fun offer(localUri: String, language: GutenbergLanguage? = null) {
+        val book = bookRepository.loadBookFromUri(localUri)
+        if (book == null) {
+            Log.w("BookshelfViewModel", "Imported file is not a readable EPUB: $localUri")
+            return
+        }
+        val existing = bookRepository.getAllSessions()
+            .firstOrNull { it.leftBookUri == localUri || it.rightBookUri == localUri }
+        _incomingBook.value = IncomingBook(localUri, book.title, existing, language)
     }
 
     fun dismissIncomingBook() {
@@ -236,5 +254,6 @@ class BookshelfViewModel @Inject constructor(
  */
 data class SessionWithCover(
     val session: ReadingSession,
-    val leftCoverImage: String? = null
+    val leftCoverImage: String? = null,
+    val rightCoverImage: String? = null
 )

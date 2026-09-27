@@ -27,6 +27,7 @@
 
 <p><b>And also</b></p>
 <ul>
+<li>Search and download free public-domain books from Project Gutenberg, in English or Spanish, right from the bookshelf.</li>
 <li>Bookshelf with covers and progress for each book.</li>
 <li>Table of contents, sentence and paragraph navigation, adjustable font size.</li>
 <li>Your position and settings are saved automatically.</li>
