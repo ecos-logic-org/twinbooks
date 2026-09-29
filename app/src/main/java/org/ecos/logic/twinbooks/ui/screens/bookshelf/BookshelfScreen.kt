@@ -4,6 +4,7 @@ import org.ecos.logic.twinbooks.ui.screens.reader.serverStatusLook
 import org.ecos.logic.twinbooks.alignment.model.ServerStatus
 import org.ecos.logic.twinbooks.alignment.repository.ServerConfig
 import org.ecos.logic.twinbooks.alignment.repository.ServerSettingsStore
+import org.ecos.logic.twinbooks.freebooks.FreeBooksSite
 import org.ecos.logic.twinbooks.gutenberg.GutenbergLanguage
 import org.ecos.logic.twinbooks.ui.viewmodel.GutenbergPreset
 import android.content.Context
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.NavigateNext
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material3.AlertDialog
@@ -119,6 +122,9 @@ fun BookshelfScreen(
     var showServerSettings by remember { mutableStateOf(false) }
     var showGutenberg by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showDownloadMenu by remember { mutableStateOf(false) }
+    // Free-books website open in the in-app browser
+    var browserSite by remember { mutableStateOf<FreeBooksSite?>(null) }
     // Gutenberg opened from the new-pair dialog: the side the download goes to (null = free search)
     var gutenbergTarget by remember { mutableStateOf<PairSide?>(null) }
     var gutenbergPreset by remember { mutableStateOf<GutenbergPreset?>(null) }
@@ -238,20 +244,47 @@ fun BookshelfScreen(
                     )
                 }
             }
-            // Search and download public-domain books
-            Button(
-                onClick = {
-                    gutenbergTarget = null
-                    gutenbergPreset = null
-                    showGutenberg = true
-                },
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF37474F)
-                )
-            ) {
-                Icon(Icons.Default.CloudDownload, contentDescription = "Buscar en Project Gutenberg", tint = Color.White)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Gutenberg", fontSize = 13.sp)
+            // Get new books: free, legal sources
+            Box {
+                Button(
+                    onClick = { showDownloadMenu = true },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF37474F)
+                    )
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Descargar", fontSize = 13.sp)
+                }
+                DropdownMenu(expanded = showDownloadMenu, onDismissRequest = { showDownloadMenu = false }) {
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("Project Gutenberg")
+                                Text(
+                                    "Buscador de más de 70.000 libros en inglés y castellano",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF9E9E9E)
+                                )
+                            }
+                        },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        onClick = {
+                            showDownloadMenu = false
+                            gutenbergTarget = null
+                            gutenbergPreset = null
+                            showGutenberg = true
+                        }
+                    )
+                    // Catalogs without an open API: browsed inside the app, their EPUB
+                    // downloads land on the bookshelf
+                    FreeBooksSite.entries.forEach { site ->
+                        FreeBooksSiteItem(site) {
+                            showDownloadMenu = false
+                            browserSite = site
+                        }
+                    }
+                }
             }
             // Optional TwinBooks server (alignment + translation)
             Box {
@@ -317,6 +350,18 @@ fun BookshelfScreen(
                     Text("Aceptar")
                 }
             }
+        )
+    }
+
+    browserSite?.let { site ->
+        FreeBooksBrowserDialog(
+            site = site,
+            onDownloaded = { downloaded ->
+                browserSite = null
+                pairAuthorHint = ""
+                viewModel.offerLocalBook(downloaded.uri, downloaded.language)
+            },
+            onDismiss = { browserSite = null }
         )
     }
 
@@ -667,6 +712,21 @@ private fun NewPairDialog(
                 Text("Cancelar")
             }
         }
+    )
+}
+
+/** Menu entry that opens a free-books website in the in-app browser. */
+@Composable
+private fun FreeBooksSiteItem(site: FreeBooksSite, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Column {
+                Text(site.title)
+                Text(site.subtitle, fontSize = 12.sp, color = Color(0xFF9E9E9E))
+            }
+        },
+        leadingIcon = { Icon(Icons.Default.Public, contentDescription = null) },
+        onClick = onClick
     )
 }
 

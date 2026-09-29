@@ -104,7 +104,7 @@ fun EmptyShelf(onClick: () -> Unit, modifier: Modifier = Modifier) {
         )
         ShelfPlank()
         Text(
-            "Añade un par de libros o un libro único, o descarga uno de Project Gutenberg",
+            "Añade libros que ya tengas con «Añadir», o consigue libros gratis con «Descargar»",
             color = Color(0xFF666666),
             fontSize = 14.sp,
             textAlign = TextAlign.Center,

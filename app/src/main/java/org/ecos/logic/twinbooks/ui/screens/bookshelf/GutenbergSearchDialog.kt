@@ -1,8 +1,5 @@
 package org.ecos.logic.twinbooks.ui.screens.bookshelf
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -41,7 +38,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,7 +48,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -87,16 +82,9 @@ fun GutenbergSearchDialog(
         preset?.let(viewModel::applyPreset)
     }
 
-    // The app is landscape-only, but browsing a catalog reads better in portrait: let the
-    // device rotate (honouring the user's rotation lock) while the search is open
-    val activity = LocalContext.current.findActivity()
-    DisposableEffect(activity) {
-        val previous = activity?.requestedOrientation
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
-        onDispose {
-            if (activity != null && previous != null) activity.requestedOrientation = previous
-        }
-    }
+    // Browsing a catalog reads better in portrait: let the device rotate (honouring the
+    // user's rotation lock) while the search is open
+    OverrideScreenOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER)
 
     LaunchedEffect(Unit) {
         viewModel.downloaded.collect { onDownloaded(it) }
@@ -178,12 +166,6 @@ fun GutenbergSearchDialog(
             Results(state, viewModel)
         }
     }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
 }
 
 @Composable
