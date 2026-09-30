@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="fastlane/metadata/android/en-US/images/icon.png" width="128" alt="TwinBooks icon">
+</p>
+
 # TwinBooks
 
 [![Pipeline status](https://gitlab.com/ecos.logic.org/twinbooks/badges/master/pipeline.svg)](https://gitlab.com/ecos.logic.org/twinbooks/-/pipelines)
