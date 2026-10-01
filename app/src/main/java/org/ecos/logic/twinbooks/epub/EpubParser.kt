@@ -122,7 +122,7 @@ class EpubParser @Inject constructor(
     private fun buildTocMap(tocReferences: List<io.documentnode.epub4j.domain.TOCReference>, bookTitle: String): Map<String, String> {
         val map = mutableMapOf<String, String>()
         for (tocRef in tocReferences) {
-            val href = tocRef.completeHref ?: continue
+            val href = tocRef.safeCompleteHref() ?: continue
             val tocTitle = tocRef.title?.trim() ?: continue
             // Skip entries that just have the book title (not useful chapter titles)
             if (tocTitle.equals(bookTitle, ignoreCase = true)) continue
@@ -256,14 +256,21 @@ class EpubParser @Inject constructor(
             val book = epubReader.readEpub(inputStream)
             inputStream.close()
 
-            book.tableOfContents.tocReferences.map { tocRef ->
-                tocRef.title to tocRef.completeHref
+            book.tableOfContents.tocReferences.mapNotNull { tocRef ->
+                tocRef.safeCompleteHref()?.let { tocRef.title to it }
             }
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
         }
     }
+
+    /**
+     * completeHref throws when the TOC points to a file missing from the EPUB (epub4j leaves
+     * the resource null), e.g. Elejandría books whose NCX lists Text/about.xml: skip the entry.
+     */
+    private fun io.documentnode.epub4j.domain.TOCReference.safeCompleteHref(): String? =
+        if (resource == null) null else completeHref
 
     private fun getInputStream(uri: Uri): InputStream? {
         return try {
