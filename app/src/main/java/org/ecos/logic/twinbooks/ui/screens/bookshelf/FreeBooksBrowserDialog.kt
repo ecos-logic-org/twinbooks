@@ -181,7 +181,8 @@ fun FreeBooksBrowserDialog(
                                 }
                             }
                             setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                                val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                                val fileName = WebBookDownloader.fileNameFromDisposition(contentDisposition)
+                                    ?: URLUtil.guessFileName(url, contentDisposition, mimeType)
                                 if (url.startsWith("http") && WebBookDownloader.looksLikeEpub(mimeType, fileName)) {
                                     viewModel.download(
                                         site = site,

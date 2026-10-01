@@ -1,6 +1,8 @@
 package org.ecos.logic.twinbooks.freebooks
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,6 +15,21 @@ class FreeBooksTest {
         assertTrue(WebBookDownloader.looksLikeEpub(null, "Libro.EPUB"))
         assertFalse(WebBookDownloader.looksLikeEpub("application/pdf", "libro.pdf"))
         assertFalse(WebBookDownloader.looksLikeEpub("application/x-mobipocket-ebook", "libro.azw3"))
+    }
+
+    @Test
+    fun `file name is taken from content disposition as is`() {
+        // Elejandría: unquoted name, served as application/octet-stream
+        assertEquals("Mi_lucha_-Hitler_Adolf.epub",
+            WebBookDownloader.fileNameFromDisposition("attachment; filename=Mi_lucha_-Hitler_Adolf.epub"))
+        assertEquals("El principito.epub",
+            WebBookDownloader.fileNameFromDisposition("attachment; filename=\"El principito.epub\""))
+        assertEquals("Niño.epub",
+            WebBookDownloader.fileNameFromDisposition("attachment; filename=\"x.epub\"; filename*=UTF-8''Ni%C3%B1o.epub"))
+        assertEquals("libro.epub",
+            WebBookDownloader.fileNameFromDisposition("attachment; filename=libro.epub; size=123"))
+        assertNull(WebBookDownloader.fileNameFromDisposition("attachment"))
+        assertNull(WebBookDownloader.fileNameFromDisposition(null))
     }
 
     @Test

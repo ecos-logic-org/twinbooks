@@ -80,5 +80,24 @@ class WebBookDownloader @Inject constructor() {
         fun looksLikeEpub(mimeType: String?, fileName: String): Boolean =
             mimeType.equals("application/epub+zip", ignoreCase = true) ||
                 fileName.endsWith(".epub", ignoreCase = true)
+
+        private val ENCODED_FILENAME = Regex("""filename\*\s*=\s*(?:[\w-]+)?'[^']*'([^;]+)""", RegexOption.IGNORE_CASE)
+        private val PLAIN_FILENAME = Regex("""filename\s*=\s*(?:"([^"]*)"|([^;]+))""", RegexOption.IGNORE_CASE)
+
+        /**
+         * The file name the server gave in Content-Disposition, as is. Unlike
+         * URLUtil.guessFileName, it never swaps the extension to match the MIME type
+         * (Elejandría sends `book.epub` as application/octet-stream, which became `book.bin`).
+         */
+        fun fileNameFromDisposition(contentDisposition: String?): String? {
+            if (contentDisposition.isNullOrBlank()) return null
+            ENCODED_FILENAME.find(contentDisposition)?.let { match ->
+                val decoded = runCatching { java.net.URLDecoder.decode(match.groupValues[1].trim(), "UTF-8") }.getOrNull()
+                if (!decoded.isNullOrBlank()) return decoded.substringAfterLast('/')
+            }
+            val match = PLAIN_FILENAME.find(contentDisposition) ?: return null
+            val name = match.groupValues[1].ifEmpty { match.groupValues[2] }.trim()
+            return name.substringAfterLast('/').ifBlank { null }
+        }
     }
 }
