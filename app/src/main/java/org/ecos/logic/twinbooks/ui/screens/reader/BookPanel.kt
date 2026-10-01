@@ -335,10 +335,12 @@ private fun ChapterWebView(
             <script>
             function scrollToParagraph(text) {
                 if (!text) return false;
+                // Saved before line breaks were flattened, the text may still contain them
+                var target = flattenLineBreaks(text).substring(0, 100);
                 var elements = document.querySelectorAll('p');
                 for (var i = 0; i < elements.length; i++) {
-                    var elText = elements[i].textContent.trim();
-                    if (elText.substring(0, 100) === text.substring(0, 100)) {
+                    var elText = flattenLineBreaks(elements[i].textContent).trim();
+                    if (elText.substring(0, 100) === target) {
                         // Immediately highlight the target paragraph
                         if (window.highlighted) {
                             window.highlighted.classList.remove('reading-zone-highlight', 'reading-zone-highlight-synced');
@@ -462,8 +464,16 @@ private fun ChapterWebView(
                 return clone;
             }
 
+            // Hard-wrapped sources (Project Gutenberg breaks lines every ~70 chars) put
+            // newlines inside sentences, and compromise.js ends a sentence at every newline.
+            // Replace each line break with ONE space: same length, so character offsets
+            // still map onto the real text nodes (getSentenceRange).
+            function flattenLineBreaks(text) {
+                return text.replace(/[\r\n\t\f\v]/g, ' ');
+            }
+
             function getParagraphText(paragraph) {
-                return getCleanParagraphClone(paragraph).textContent;
+                return flattenLineBreaks(getCleanParagraphClone(paragraph).textContent);
             }
 
             function getParagraphSentences(paragraph) {
@@ -579,7 +589,7 @@ private fun ChapterWebView(
 
                 clearSentenceHighlight();
 
-                var fullText = paragraph.textContent;
+                var fullText = flattenLineBreaks(paragraph.textContent);
                 var start = fullText.indexOf(sentenceText);
                 if (start === -1) start = fullText.indexOf(sentenceText.trim());
                 if (start === -1) return false;
