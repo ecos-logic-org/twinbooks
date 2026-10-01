@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.ecos.logic.twinbooks.freebooks.FreeBooksSite
+import org.ecos.logic.twinbooks.freebooks.PublicDownloads
 import org.ecos.logic.twinbooks.freebooks.WebBookDownloader
 import java.io.File
 import javax.inject.Inject
@@ -30,6 +31,7 @@ data class FreeBooksDownloadState(
 @HiltViewModel
 class FreeBooksBrowserViewModel @Inject constructor(
     private val downloader: WebBookDownloader,
+    private val publicDownloads: PublicDownloads,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -57,6 +59,7 @@ class FreeBooksBrowserViewModel @Inject constructor(
                 downloader.download(url, userAgent, cookies, referer, target) { progress ->
                     _state.update { it.copy(progress = progress) }
                 }
+                publicDownloads.save(target, target.name)
                 _state.update { FreeBooksDownloadState() }
                 _downloaded.send(DownloadedBook(Uri.fromFile(target).toString(), site.language, author = ""))
             } catch (e: Exception) {

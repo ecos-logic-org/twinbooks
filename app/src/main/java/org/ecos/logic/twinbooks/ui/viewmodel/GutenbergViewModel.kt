@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.ecos.logic.twinbooks.freebooks.PublicDownloads
 import org.ecos.logic.twinbooks.gutenberg.GutenbergBook
 import org.ecos.logic.twinbooks.gutenberg.GutenbergLanguage
 import org.ecos.logic.twinbooks.gutenberg.GutenbergRepository
@@ -45,6 +46,7 @@ data class GutenbergPreset(val query: String, val language: GutenbergLanguage)
 @HiltViewModel
 class GutenbergViewModel @Inject constructor(
     private val gutenberg: GutenbergRepository,
+    private val publicDownloads: PublicDownloads,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -124,6 +126,7 @@ class GutenbergViewModel @Inject constructor(
                 gutenberg.download(book, target) { progress ->
                     _state.update { it.copy(downloadProgress = progress) }
                 }
+                publicDownloads.save(target, listOf(book.title, book.author).filter { it.isNotBlank() }.joinToString(" - "))
                 _downloaded.send(DownloadedBook(Uri.fromFile(target).toString(), language, book.author))
             } catch (e: Exception) {
                 Log.w("Gutenberg", "Download of ${book.id} failed: ${e.message}")

@@ -33,6 +33,14 @@ class FreeBooksTest {
     }
 
     @Test
+    fun `public download name is safe and always an epub`() {
+        assertEquals("Niebla - Miguel de Unamuno.epub", PublicDownloads.fileName("Niebla - Miguel de Unamuno"))
+        assertEquals("Libro.epub", PublicDownloads.fileName("Libro.epub"))
+        assertEquals("¿Qué_ A_B.epub", PublicDownloads.fileName("¿Qué? A/B"))
+        assertEquals("libro.epub", PublicDownloads.fileName("  "))
+    }
+
+    @Test
     fun `site pages and subdomains stay in the app, other hosts do not`() {
         val site = FreeBooksSite.ELEJANDRIA
         assertTrue(site.owns("elejandria.com"))
