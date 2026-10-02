@@ -39,7 +39,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.ViewColumn
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -105,7 +104,6 @@ fun ReaderScreen(
     var rightTtsHighlight by remember { mutableStateOf<TtsSentenceHighlight?>(null) }
     // Right-panel <- / -> jump in flight: true = select the last sentence on arrival, false = first
     var pendingRightSentenceLast by remember { mutableStateOf<Boolean?>(null) }
-    var showResetDialog by remember { mutableStateOf(false) }
 
     // Load session when screen is created
     LaunchedEffect(sessionId) {
@@ -404,6 +402,22 @@ fun ReaderScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // Bookshelf button, right above play/pause
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(Color(0xFF1565C0), RoundedCornerShape(6.dp))
+                        .border(1.dp, Color(0xFF42A5F5), RoundedCornerShape(6.dp))
+                        .clickable {
+                            // Navigate back to bookshelf - stop TTS and notify parent
+                            viewModel.stopTts()
+                            onBackToBookshelf()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "📚", fontSize = 16.sp)
+                }
+                Spacer(modifier = Modifier.height(24.dp))
                 if (state.leftBook != null || state.rightBook != null) {
                     // TTS Play/Pause button (large)
                     Box(
@@ -763,13 +777,7 @@ fun ReaderScreen(
         onSetTtsSpeed = { viewModel.setTtsSpeed(it) },
         ttsBilingualMode = state.ttsBilingualMode,
         onSetTtsBilingualMode = { viewModel.setTtsBilingualMode(it) },
-        onResetBooks = { showResetDialog = true },
         onToggleBottomBar = { viewModel.toggleBottomBarVisibility() },
-        onOpenBookshelf = {
-            // Navigate back to bookshelf - stop TTS and notify parent
-            viewModel.stopTts()
-            onBackToBookshelf()
-        },
         onPrevChapter = { viewModel.navigateToPreviousChapter() },
         onNextChapter = { viewModel.advanceBothBooksToNextChapter() },
         canGoPrevChapter = canGoPrevChapter,
@@ -790,32 +798,6 @@ fun ReaderScreen(
         modifier = Modifier.align(Alignment.BottomCenter)
     )
 }  // End Box
-
-if (showResetDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text("Reset books") },
-            text = {
-                Text(
-                    "This will close both books and reset all reading progress. " +
-                            "This action cannot be undone.\n\nDo you want to continue?"
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    showResetDialog = false
-                    viewModel.resetBooks()
-                }) {
-                    Text("Accept")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 }
 
 @Composable
@@ -853,9 +835,7 @@ private fun BottomBar(
     onSetTtsSpeed: (Float) -> Unit,
     ttsBilingualMode: TtsBilingualMode,
     onSetTtsBilingualMode: (TtsBilingualMode) -> Unit,
-    onResetBooks: () -> Unit,
     onToggleBottomBar: () -> Unit,
-    onOpenBookshelf: () -> Unit,
     onPrevChapter: () -> Unit,
     onNextChapter: () -> Unit,
     canGoPrevChapter: Boolean,
@@ -878,42 +858,7 @@ private fun BottomBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Group 1: Reset + Bookshelf
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF232323), RoundedCornerShape(6.dp))
-                        .border(1.dp, Color(0xFF444444), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // Refresh / Reset books button
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xFFB71C1C), RoundedCornerShape(4.dp))
-                                .border(1.dp, Color(0xFFD32F2F), RoundedCornerShape(4.dp))
-                                .clickable { onResetBooks() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "⟳", color = Color(0xFFFFFFFF), fontSize = 16.sp)
-                        }
-
-                        // Bookshelf button
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color(0xFF1565C0), RoundedCornerShape(4.dp))
-                                .border(1.dp, Color(0xFF42A5F5), RoundedCornerShape(4.dp))
-                                .clickable { onOpenBookshelf() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = "📚", fontSize = 16.sp)
-                        }
-                    }
-                }
-
-                // Group 2: Chapter navigation (|< and >|)
+                // Chapter navigation (|< and >|)
                 Box(
                     modifier = Modifier
                         .background(Color(0xFF232323), RoundedCornerShape(6.dp))
