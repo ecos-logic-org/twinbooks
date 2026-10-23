@@ -78,6 +78,7 @@ class ReaderViewModel @Inject constructor(
         private set
     private var isBilingualPendingTranslation = false
     private var lastSpokenEnglishText = ""
+    private var lastSpokenSpanishMatch: SpanishMatch? = null // ES_ONLY: don't repeat an ES sentence shared by several EN ones
     private var bilingualPhase = 0 // 0=off, tracks which phase in bilingual flow
     private var ttsExpectedSentenceIndex = -1 // Track which sentence index we expect from TTS-driven highlight
     private var ttsExpectedParagraphIndex = -1 // Track which paragraph we're in
@@ -1437,6 +1438,7 @@ class ReaderViewModel @Inject constructor(
         ttsManager.stop()
         isBilingualPendingTranslation = false
         bilingualPhase = 0
+        lastSpokenSpanishMatch = null
         ttsExpectedSentenceIndex = -1
         ttsExpectedParagraphIndex = -1
         ttsExpectedRightParagraphIndex = -1
@@ -1449,6 +1451,7 @@ class ReaderViewModel @Inject constructor(
         ttsManager.stop()
         isBilingualPendingTranslation = false
         bilingualPhase = 0
+        lastSpokenSpanishMatch = null
         ttsExpectedSentenceIndex = -1
         ttsExpectedParagraphIndex = -1
         ttsExpectedRightParagraphIndex = -1
@@ -1489,6 +1492,7 @@ class ReaderViewModel @Inject constructor(
         _state.update { it.copy(ttsBilingualMode = mode) }
         isBilingualPendingTranslation = false
         bilingualPhase = 0
+        lastSpokenSpanishMatch = null
         saveCurrentSession()
     }
 
@@ -1562,6 +1566,40 @@ class ReaderViewModel @Inject constructor(
                 // Phase 0: speak English first
                 bilingualPhase = 0
                 ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+            }
+            TtsBilingualMode.ES_ONLY -> {
+                // The left book still drives the pace; only its Spanish counterpart is spoken
+                isBilingualPendingTranslation = true
+                viewModelScope.launch {
+                    try {
+                        val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
+                            ttsExpectedRightParagraphIndex
+                        } else null
+                        val match = findMatchingSpanishSentence(text, rightParaIndex)
+                        val last = lastSpokenSpanishMatch
+                        if (match != null && last != null && match.paragraphIndex == last.paragraphIndex &&
+                            match.firstSentence >= last.firstSentence && match.lastSentence <= last.lastSentence
+                        ) {
+                            // Several EN sentences map to one ES sentence: it was already spoken
+                            Log.d("TtsBilingual", "ES only: '${match.text}' already spoken, skipping")
+                            isBilingualPendingTranslation = false
+                            advanceToNextSentence()
+                            return@launch
+                        }
+                        val spanishSentence = match?.text ?: run {
+                            Log.w("TtsBilingual", "No Spanish sentence found, falling back to translation")
+                            translationManager.translate(text)
+                        }
+                        Log.d("TtsBilingual", "ES only: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                        lastSpokenSpanishMatch = match
+                        match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
+                        ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
+                    } catch (e: Exception) {
+                        Log.e("TtsBilingual", "ES only: Failed to get Spanish sentence", e)
+                        isBilingualPendingTranslation = false
+                        ttsManager.speak(text, _state.value.leftSentenceIndex, _state.value.ttsSpeed)
+                    }
+                }
             }
         }
     }
@@ -1699,6 +1737,12 @@ class ReaderViewModel @Inject constructor(
                         bilingualPhase = 0
                         advanceToNextSentence()
                     }
+                }
+
+                TtsBilingualMode.ES_ONLY -> {
+                    // ES done (or EN, after a failed lookup) → next sentence
+                    isBilingualPendingTranslation = false
+                    advanceToNextSentence()
                 }
             }
         }
@@ -1970,7 +2014,7 @@ class ReaderViewModel @Inject constructor(
         // split sentences, translate this paragraph sentence by sentence for SPEECH only
         // (less context, but EN[i] <-> ES[i] is guaranteed). The displayed translation
         // stays the full-paragraph one.
-        if (needsEsSpeech && esParagraph != null && esSentences.size != enSentences.size) {
+        if (needsEsSpeech && mode != TtsBilingualMode.ES_ONLY && esParagraph != null && esSentences.size != enSentences.size) {
             Log.d("SingleBook", "Paragraph $paraIdx: ${enSentences.size} EN vs ${esSentences.size} ES sentences, translating per sentence")
             val perSentence = enSentences.map { translationManager.translate(it) }
             if (perSentence != enSentences) { // translate() returns the input unchanged on failure
@@ -2034,6 +2078,14 @@ class ReaderViewModel @Inject constructor(
                     seq.add(0 to i)
                     if (i < esSentences.size) seq.add(1 to i)
                     seq.add(0 to i) // repeat EN
+                }
+            }
+            TtsBilingualMode.ES_ONLY -> {
+                // No translation available → read the English rather than skip the paragraph
+                if (esSentences.isEmpty()) {
+                    for (i in enSentences.indices) seq.add(0 to i)
+                } else {
+                    for (i in esSentences.indices) seq.add(1 to i)
                 }
             }
         }

@@ -24,9 +24,15 @@ Always run `./gradlew assembleDebug` after changes to verify compilation.
 - **Reading modes**: dual (two EPUBs side by side) or **single-book mode** (one EPUB full
   screen, Spanish side comes from the server's `POST translate` (server-side model, one ES sentence
   per EN sentence, next paragraph prefetched) with on-device slimt (Mozilla Bergamot model) as fallback, rendered inline
-  below each paragraph; TTS unit is the PARAGRAPH: EN paragraph → translated ES paragraph → EN again
-  in EN↔ES mode; flag `isSingleBookMode` on the session, entry points: bookshelf
+  below each paragraph; translation is per PARAGRAPH but TTS interleaves SENTENCES within it,
+  paired by position (EN₁ → ES₁ → EN₁ → EN₂ … in EN→ES→EN mode; see
+  `buildSingleBookUtteranceSequence`); flag `isSingleBookMode` on the session, entry points: bookshelf
   new-session dialog and the reader's empty state)
+- **TTS modes** (`TtsBilingualMode`, cycled in that order, persisted on the session): `OFF` (EN
+  only), `EN_TO_ES`, `ES_TO_EN`, `EN_ES_EN` (EN repeated after ES), `ES_ONLY` (only the Spanish side;
+  the left book still drives the pace, an ES sentence shared by several EN ones is spoken once;
+  single-book falls back to EN when there is no translation). In dual mode the ES sentence
+  comes from the right book (`findMatchingSpanishSentence`), falling back to translation
 - **EPUB**: `epub4j-core` library, images embedded as base64 data URIs
 - **Offline translation**: `TranslationManager` → `OfflineTranslator` → `SlimtTranslator`
   (JNI `SlimtNative` → `app/src/main/cpp`: `slimt_engine.cc` + `slimt_jni.cc` over the

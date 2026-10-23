@@ -1027,7 +1027,8 @@ private fun BottomBar(
                             ) {
                                 val isActive = ttsBilingualMode != TtsBilingualMode.OFF
                                 val alpha = if (isActive) 1f else 0.4f
-                                val esFirst = ttsBilingualMode == TtsBilingualMode.ES_TO_EN
+                                val esOnly = ttsBilingualMode == TtsBilingualMode.ES_ONLY
+                                val esFirst = ttsBilingualMode == TtsBilingualMode.ES_TO_EN || esOnly
                                 Text(
                                     text = if (esFirst) "\uD83C\uDDEA\uD83C\uDDF8" else "\uD83C\uDDEC\uD83C\uDDE7",
                                     fontSize = 13.sp,
@@ -1039,17 +1040,20 @@ private fun BottomBar(
                                         TtsBilingualMode.EN_TO_ES -> "\u2192"
                                         TtsBilingualMode.ES_TO_EN -> "\u2192"
                                         TtsBilingualMode.EN_ES_EN -> "\u21C4"
+                                        TtsBilingualMode.ES_ONLY -> ""
                                     },
                                     color = if (isActive) Color(0xFFCE93D8) else Color(0xFF555555),
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.padding(horizontal = 1.dp)
                                 )
-                                Text(
-                                    text = if (esFirst) "\uD83C\uDDEC\uD83C\uDDE7" else "\uD83C\uDDEA\uD83C\uDDF8",
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
-                                )
+                                if (!esOnly) {
+                                    Text(
+                                        text = if (esFirst) "\uD83C\uDDEC\uD83C\uDDE7" else "\uD83C\uDDEA\uD83C\uDDF8",
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                                    )
+                                }
                             }
                         }
                         DropdownMenu(
@@ -1060,7 +1064,9 @@ private fun BottomBar(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (mode != TtsBilingualMode.OFF) {
+                                            if (mode == TtsBilingualMode.ES_ONLY) {
+                                                Text(text = "\uD83C\uDDEA\uD83C\uDDF8", fontSize = 14.sp)
+                                            } else if (mode != TtsBilingualMode.OFF) {
                                                 val esFirst = mode == TtsBilingualMode.ES_TO_EN
                                                 Text(text = if (esFirst) "\uD83C\uDDEA\uD83C\uDDF8" else "\uD83C\uDDEC\uD83C\uDDE7", fontSize = 14.sp)
                                                 Text(

@@ -97,7 +97,9 @@ enum class TtsBilingualMode(val label: String) {
     OFF("Off"),
     EN_TO_ES("EN → ES"),
     ES_TO_EN("ES → EN"),
-    EN_ES_EN("EN → ES → EN");
+    EN_ES_EN("EN → ES → EN"),
+    /** Spanish only: the right book (dual) or the translation (single-book), for a rest from English. */
+    ES_ONLY("ES");
 
     companion object {
         fun next(current: TtsBilingualMode): TtsBilingualMode {
