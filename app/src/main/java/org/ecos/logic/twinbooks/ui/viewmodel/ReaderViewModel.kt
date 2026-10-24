@@ -79,6 +79,8 @@ class ReaderViewModel @Inject constructor(
     private var isBilingualPendingTranslation = false
     private var lastSpokenEnglishText = ""
     private var lastSpokenSpanishMatch: SpanishMatch? = null // ES_ONLY: don't repeat an ES sentence shared by several EN ones
+    private var lastSpokenSpanishLeftSentence: Pair<Int, Int>? = null // (paragraph, sentence) lastSpokenSpanishMatch was spoken for
+    private var previousSpokenSpanishMatch: SpanishMatch? = null // spoken for the left sentence before that one
     private var bilingualPhase = 0 // 0=off, tracks which phase in bilingual flow
     private var ttsExpectedSentenceIndex = -1 // Track which sentence index we expect from TTS-driven highlight
     private var ttsExpectedParagraphIndex = -1 // Track which paragraph we're in
@@ -111,6 +113,7 @@ class ReaderViewModel @Inject constructor(
     private var currentAlignmentKey: String? = null
     // Lookup for the current chapter alignment: left global sentence -> right global sentences
     private var alignmentByLeft: Map<Int, List<Int>> = emptyMap()
+    private var alignedRightSentences: Set<Int> = emptySet() // right global indices paired with some left sentence
     private var alignmentFromServer = false
     // Server negative cache: don't retry a chapter pair for a while after a failure
     private var serverFailedKey: String? = null
@@ -1009,12 +1012,21 @@ class ReaderViewModel @Inject constructor(
         val text: String,
         val paragraphIndex: Int,
         val firstSentence: Int,
-        val lastSentence: Int
+        val lastSentence: Int,
+        /** From the chapter alignment or a one-sentence paragraph, not a word-overlap guess */
+        val reliable: Boolean = false
     )
 
+    /**
+     * @param includeOrphans also take the right paragraph's sentences that no left sentence is
+     * aligned to and sit next to the match, so ES_ONLY reads them too (other modes pair EN↔ES).
+     * Orphans at or before [spokenBefore] (same right paragraph) are not taken again.
+     */
     private suspend fun findMatchingSpanishSentence(
         englishSentence: String,
-        rightParaIndex: Int? = null
+        rightParaIndex: Int? = null,
+        includeOrphans: Boolean = false,
+        spokenBefore: SpanishMatch? = null
     ): SpanishMatch? {
         val currentState = _state.value
 
@@ -1048,7 +1060,7 @@ class ReaderViewModel @Inject constructor(
         if (spanishSentences.isEmpty()) return null
         
         // If only one sentence, return it with index 0
-        if (spanishSentences.size == 1) return SpanishMatch(spanishSentences[0], paraIndex, 0, 0)
+        if (spanishSentences.size == 1) return SpanishMatch(spanishSentences[0], paraIndex, 0, 0, reliable = true)
 
         // Alignment indices are CHAPTER-GLOBAL while TTS indices are PARAGRAPH-LOCAL.
         // Convert using per-paragraph offsets derived from the same compromise lists.
@@ -1081,9 +1093,18 @@ class ReaderViewModel @Inject constructor(
                     // 1:2 alignments speak (and highlight) both Spanish sentences
                     val source = if (alignmentFromServer) "Server" else "Local"
                     Log.d("TtsBilingual", "$source alignment: leftGlobal=$leftGlobalIdx → local=$localRight")
+                    var first = localRight.min()
+                    var last = localRight.max()
+                    if (includeOrphans) {
+                        val isOrphan = { local: Int -> rightSentencesBeforePara + local !in alignedRightSentences }
+                        val floor = if (spokenBefore?.paragraphIndex == paraIndex) spokenBefore.lastSentence + 1 else 0
+                        while (first - 1 >= floor && isOrphan(first - 1)) first--
+                        while (last + 1 < spanishSentences.size && isOrphan(last + 1)) last++
+                    }
+                    val indices = if (first == localRight.min() && last == localRight.max()) localRight else (first..last).toList()
                     return SpanishMatch(
-                        localRight.joinToString(" ") { spanishSentences[it] },
-                        paraIndex, localRight.min(), localRight.max()
+                        indices.joinToString(" ") { spanishSentences[it] },
+                        paraIndex, first, last, reliable = true
                     )
                 } else {
                     Log.w("TtsBilingual", "Alignment has no pair inside right paragraph $paraIndex for leftGlobal=$leftGlobalIdx")
@@ -1173,6 +1194,7 @@ class ReaderViewModel @Inject constructor(
         currentAlignmentKey = key
         alignmentFromServer = fromServer
         alignmentByLeft = pairs.groupBy({ it.first }, { it.second })
+        alignedRightSentences = pairs.mapTo(HashSet()) { it.second }
         if (_state.value.isSynchronized) {
             _state.update { it.copy(resyncRightTrigger = it.resyncRightTrigger + 1) }
         }
@@ -1439,6 +1461,7 @@ class ReaderViewModel @Inject constructor(
         isBilingualPendingTranslation = false
         bilingualPhase = 0
         lastSpokenSpanishMatch = null
+        previousSpokenSpanishMatch = null
         ttsExpectedSentenceIndex = -1
         ttsExpectedParagraphIndex = -1
         ttsExpectedRightParagraphIndex = -1
@@ -1452,6 +1475,7 @@ class ReaderViewModel @Inject constructor(
         isBilingualPendingTranslation = false
         bilingualPhase = 0
         lastSpokenSpanishMatch = null
+        previousSpokenSpanishMatch = null
         ttsExpectedSentenceIndex = -1
         ttsExpectedParagraphIndex = -1
         ttsExpectedRightParagraphIndex = -1
@@ -1493,6 +1517,7 @@ class ReaderViewModel @Inject constructor(
         isBilingualPendingTranslation = false
         bilingualPhase = 0
         lastSpokenSpanishMatch = null
+        previousSpokenSpanishMatch = null
         saveCurrentSession()
     }
 
@@ -1570,14 +1595,34 @@ class ReaderViewModel @Inject constructor(
             TtsBilingualMode.ES_ONLY -> {
                 // The left book still drives the pace; only its Spanish counterpart is spoken
                 isBilingualPendingTranslation = true
+                val leftParagraph = _state.value.leftParagraphIndex
+                val leftSentence = _state.value.leftSentenceIndex
                 viewModelScope.launch {
                     try {
                         val rightParaIndex = if (ttsExpectedRightParagraphIndex >= 0 && ttsExpectedRightParagraphIndex != _state.value.rightParagraphIndex) {
                             ttsExpectedRightParagraphIndex
                         } else null
-                        val match = findMatchingSpanishSentence(text, rightParaIndex)
+                        val match = findMatchingSpanishSentence(
+                            text, rightParaIndex, includeOrphans = true,
+                            // The duplicate report of this sentence must get the same range back
+                            spokenBefore = if (lastSpokenSpanishLeftSentence == leftParagraph to leftSentence) {
+                                previousSpokenSpanishMatch
+                            } else lastSpokenSpanishMatch
+                        )
+                        // The WebView reports each sentence twice: if the first report already moved
+                        // TTS on (skip below), this one is stale and must not advance again
+                        if (!_state.value.isTtsPlaying || _state.value.leftParagraphIndex != leftParagraph ||
+                            _state.value.leftSentenceIndex != leftSentence
+                        ) return@launch
                         val last = lastSpokenSpanishMatch
-                        if (match != null && last != null && match.paragraphIndex == last.paragraphIndex &&
+                        val lastLeft = lastSpokenSpanishLeftSentence
+                        // Skip only for a LATER sentence of the same left paragraph: the duplicate report
+                        // of the sentence that spoke it must re-speak (as the other modes do), not skip,
+                        // and a paragraph's first sentence always speaks so the right panel can follow.
+                        // Word-overlap guesses are spoken even if repeated.
+                        if (match != null && match.reliable && last != null && lastLeft != null &&
+                            leftParagraph == lastLeft.first && leftSentence != lastLeft.second && leftSentence > 0 &&
+                            match.paragraphIndex == last.paragraphIndex &&
                             match.firstSentence >= last.firstSentence && match.lastSentence <= last.lastSentence
                         ) {
                             // Several EN sentences map to one ES sentence: it was already spoken
@@ -1591,9 +1636,13 @@ class ReaderViewModel @Inject constructor(
                             translationManager.translate(text)
                         }
                         Log.d("TtsBilingual", "ES only: '$spanishSentence' (match: $match, rightPara: $rightParaIndex)")
+                        if (lastSpokenSpanishLeftSentence != leftParagraph to leftSentence) {
+                            previousSpokenSpanishMatch = lastSpokenSpanishMatch
+                        }
                         lastSpokenSpanishMatch = match
+                        lastSpokenSpanishLeftSentence = leftParagraph to leftSentence
                         match?.let { onHighlightRightSentence?.invoke(it.paragraphIndex, it.firstSentence, it.lastSentence) }
-                        ttsManager.speakSpanish(spanishSentence, _state.value.leftSentenceIndex)
+                        ttsManager.speakSpanish(spanishSentence, leftSentence)
                     } catch (e: Exception) {
                         Log.e("TtsBilingual", "ES only: Failed to get Spanish sentence", e)
                         isBilingualPendingTranslation = false
